@@ -133,9 +133,9 @@ User response
 
 ## Quick Start
 
-### 1. — Pull required Docker images (first time only)
+### 1. Pull required Docker images (first time only)
 
-# Core images
+#### Core images
 docker pull ollama/ollama:latest
 docker pull qdrant/qdrant:latest
 docker pull ghcr.io/open-webui/open-webui:main
@@ -143,17 +143,17 @@ docker pull searxng/searxng:latest
 docker pull ghcr.io/docling-project/docling-serve:latest
 docker pull portainer/portainer-ce:latest
 
-# Automation images
+#### Automation images
 docker pull n8nio/n8n:latest
 docker pull ghcr.io/langfuse/langfuse:latest
 docker pull flowiseai/flowise:latest
 docker pull postgres:16-alpine
 
-# Agent images
+#### Agent images
 docker pull ghcr.io/agent-infra/sandbox:latest
 docker pull paulgauthier/aider:latest
 
-# UI extras
+#### UI extras
 docker pull lobehub/lobe-chat-database:latest
 docker pull mintplexlabs/anythingllm:latest
 
@@ -161,32 +161,31 @@ docker pull mintplexlabs/anythingllm:latest
 
 > **Note:** Do NOT pull `ghcr.io/bytedance/deerflow:latest` — no public image exists. DeerFlow must be built from source. See the DeerFlow Setup section below. NeMo Guardrails also has no pre-built image — it builds from source automatically on first `docker compose up` (~10 minutes, cached after that).
 
-### 2. — Pull recommended Ollama models (first time only)
+### 2. Pull recommended Ollama models (first time only)
 
-# Start Ollama first
+> **Start Ollama first**
 docker compose up -d ollama
 
-# Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license)
-# 8192-token context window, sparse+dense retrieval
+> **Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
 docker exec ollama ollama pull bge-m3
 
-# General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops
+> **General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
 docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality
 
-# Best general chat for 16GB RAM laptops (~4.5-5GB)
+> **Best general chat for 16GB RAM laptops (~4.5-5GB)**
 docker exec ollama ollama pull qwen3:4b-q4_K_M
 
-# Best coding model for CPU (~4.5-5GB)
+> **Best coding model for CPU (~4.5-5GB)**
 docker exec ollama ollama pull qwen3-coder:7b-q4_K_M
 
-# Fast small general + reasoning / guardrail judge model) (~2-3GB)
+> **Fast small general + reasoning / guardrail judge model) (~2-3GB)**
 docker exec ollama ollama pull phi4-mini:q4_K_M # or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents
 
-# Optional: vision / multimodal (~4–6 GB)
+> **Optional: vision / multimodal (~4–6 GB)**
 docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available
-```
 
-### 3. — Start core stack
+---
+### 3. Start core stack
 ```
 cd D:\ai-stack
 docker compose up -d
@@ -215,27 +214,27 @@ BGE-M3 supports an 8192-token context window — far larger than mxbai-embed-lar
 
 ### 5. Add optional layers
 
-# Agents
+> **Agents**
 ```powershell
 docker compose -f docker-compose.yml -f compose/agents.yml up -d
 ```
 
-# Automation
+> **Automation**
 ```powershell
 docker compose -f docker-compose.yml -f compose/automation.yml up -d
 ```
 
-# Guardrails
+> **Guardrails**
 ```powershell
 docker compose -f docker-compose.yml -f compose/guardrails.yml up -d
 ```
 
-# First run builds NeMo Guardrails from source (~10 minutes). Verify it started:
+> **First run builds NeMo Guardrails from source (~10 minutes). Verify it started:**
 ```powershell
 curl http://localhost:8010/health
 ```
 
-# UI extra -- pick one
+> **UI extra -- pick one**
 ```powershell
 # LobeChat (recommended if you want MCP + multi-model)
 docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lobechat-db
@@ -258,41 +257,41 @@ docker compose \
 ---
 ## DeerFlow Setup (standalone — first time only)
 DeerFlow has no pre-built public Docker image and runs as its own separate stack.
-# 1. Clone the repo (skip if already at D:\hotlanta_git\deer-flow)
+1. Clone the repo (skip if already at D:\hotlanta_git\deer-flow)
 cd D:\hotlanta_git
 git clone https://github.com/bytedance/deer-flow.git
 
-# 2. Create config files from examples
+2. Create config files from examples
 cd deer-flow
 copy .env.example .env
 copy config.example.yaml config.yaml
 
-# 3. Add the custom SearXNG wrapper (copy from this repo)
+3. Add the custom SearXNG wrapper (copy from this repo)
 mkdir backend\src\community\searxng
-# Copy __init__.py and tools.py into that folder
+> **Copy __init__.py and tools.py into that folder**
 
-# 4. Edit config.yaml — configure Ollama, AIO Sandbox, SearXNG tools
-# Edit .env — set SEARXNG_URL and CORS_ORIGINS (see deerflow-config folder)
+4. Edit config.yaml — configure Ollama, AIO Sandbox, SearXNG tools
+> **Edit .env — set SEARXNG_URL and CORS_ORIGINS (see deerflow-config folder)**
 
-# 5. Build and start (~10 minutes first time)
+5. Build and start (~10 minutes first time)
 docker compose build
 docker compose up -d
 
-## Access DeerFlow at http://localhost:2026
+#### Access DeerFlow at http://localhost:2026
 
 To stop: cd D:\hotlanta_git\deer-flow && docker compose down
 To update: git pull && docker compose build && docker compose up -d
 
 ---
-Adding Skills to DeerFlow
+> **Adding Skills to DeerFlow**
 Skills are Markdown-based capability modules that DeerFlow agents load on demand.
 They keep the context window lean — only the skill description loads at startup,
 full instructions load only when the task needs them.
 
-# Clone any skill repo into deer-flow/skills/
+> **Clone any skill repo into deer-flow/skills/**
 git clone https://github.com/author/skill-name.git skills/skill-name
 
-# Rebuild
+> **Rebuild**
 cd D:\hotlanta_git\deer-flow
 docker compose build && docker compose up -d
 
@@ -309,18 +308,18 @@ cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
 ## Vale-MCP Setup in AIO Sandbox (one-time)
 Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only).
 After starting the agents stack, open the terminal at http://localhost:8090:
-# 1. Install Vale CLI (Linux binary)
+1. Install Vale CLI (Linux binary)
 wget -q https://github.com/errata-ai/vale/releases/latest/download/vale_Linux_64-bit.tar.gz
 tar -xzf vale_Linux_64-bit.tar.gz && mv vale /usr/local/bin/ && rm vale_Linux_64-bit.tar.gz
 vale --version
 
-# 2. Copy source from read-only mount to writable workspace
+2. Copy source from read-only mount to writable workspace
 cp -r /home/gem/vale-mcp-src /home/gem/vale-mcp
 
-# 3. Rebuild node_modules for Linux (Windows binaries won't run in the container)
+3. Rebuild node_modules for Linux (Windows binaries won't run in the container)
 cd /home/gem/vale-mcp && npm install && npm run build
 
-# 4. Create Vale config for technical documentation
+4. Create Vale config for technical documentation
 cat > /home/gem/.vale.ini << 'EOF'
 StylesPath = /home/gem/.vale/styles
 MinAlertLevel = suggestion
@@ -328,10 +327,10 @@ MinAlertLevel = suggestion
 BasedOnStyles = Vale, Microsoft, write-good
 EOF
 
-# 5. Download Vale styles (one-time, requires internet)
+5. Download Vale styles (one-time, requires internet)
 vale sync
 
-# 6. Verify
+6. Verify
 echo "This is a very unique sentence you should utilize." | vale --ext=.md
 
 Vale persists in aio-workspace — no reinstall needed after container restarts.
@@ -354,7 +353,7 @@ together confirm a response is grounded and not hallucinated:
 
 Install inside AIO Sandbox terminal (**http://localhost:8090**):
 
-```bash
+```
 # Copy the install script (it will be in /home/gem/ via aio-workspace volume)
 python /home/gem/install_trulens.py
 
@@ -386,7 +385,7 @@ mathematically prove correctness. If an output cannot be proven, QWED blocks it.
 
 Install inside AIO Sandbox terminal:
 
-```bash
+```
 python /home/gem/install_qwed.py
 
 # Test all engines
@@ -462,19 +461,19 @@ macOS: Swap is automatic.
 | Best coding | `qwen3-coder:7b-q4_K_M` | ~4.7 GB | ~5-6 GB |
 | Vision / multimodal | `llava:7b` or newer Qwen_VL variant | ~4-6 GB | ~5-7 GB |
 
-> Why Qwen3 instead of Qwen2.5?
+### Why Qwen3 instead of Qwen2.5?
 > Qwen3-4B matches Qwen2.5-7B quality at half the RAM. Qwen3 also supports
 on-demand thinking mode — add /think to any prompt in Open WebUI for
 chain-of-thought on complex queries, /no_think for fast responses.
 
-> Embedding note:
+### Embedding note, why BGE-M3:
 > BGE-M3 supports an 8192-token context window vs mxbai's 512-token limit,
 enabling 800-token chunks that preserve more context per retrieved passage. It also supports sparse+dense retrieval simultaneously — sparse catches exact technical terms (model numbers, part codes, version strings) that dense embeddings often miss. MIT licensed, ~568MB.
 
-> What can llava:7b do?
+### What can llava:7b do?
 > LLaVA (Large Language and Vision Assistant) adds image understanding to your local stack. Use cases for technical documentation work: ask questions about diagrams, schematics, and screenshots directly in Open WebUI; have DeerFlow agents analyse images found during web browsing; describe circuit diagrams or UI screenshots; extract text from images of scanned documents that Docling cannot OCR. Select llava:7b as the model in Open WebUI when uploading images. Note: LLaVA and a text model cannot both be loaded in RAM simultaneously on a CPU-only laptop — Ollama will swap them automatically but expect a ~30s pause.
 
-> Why not Claude Code / Grok / GPT-4?
+### Why not Claude Code / Grok / GPT-4?
 > API-only models — no local weights available. They require sending data to cloud APIs, which breaks the local/private model. For hybrid workflows, add LiteLLM as a gateway to mix local and cloud models behind a single API endpoint.
 
 ---
@@ -540,118 +539,192 @@ Before running on any network (even local):
 
 ## Useful Commands
 
-# ── Ollama ──────────────────────────────────────────────────────────────────
+### Ollama
 
-# List installed models (simplest — no extra tools needed)
+#### List installed models (simplest — no extra tools needed)
+```
 docker exec ollama ollama list
+```
 
-# List models via API — PowerShell
+#### List models via API — PowerShell
+```
 (Invoke-WebRequest http://localhost:11434/api/tags).Content |
   ConvertFrom-Json | Select-Object -ExpandProperty models |
   Format-Table name, size, modified_at
+```
 
-# Pull a new model
+**What each part does:**
+
+- `(Invoke-WebRequest ...).Content` — calls Ollama's REST API and grabs the response body as a string
+- `ConvertFrom-Json` — parses that JSON string into a PowerShell object
+- `Select-Object -ExpandProperty models` — pulls out just the `models` array from inside that object
+- `Format-Table name, size, modified_at` — prints it as a neat table
+
+**The output looks like the following:**
+```
+name                              size       modified_at
+----                              ----       -----------
+qwen3:4b-q4_K_M                   2541748...  2026-03-10...
+bge-m3:latest                     567743...   2026-03-10...
+phi4-mini:q4_K_M                  2487234...  2026-03-10...
+```
+
+#### Pull a new model
+```
 docker exec ollama ollama pull qwen2.5:7b-instruct-q4_K_M
+```
 
-# Remove a model
+#### Remove a model
+```
 docker exec ollama ollama rm modelname
+```
 
-# ── Stack management ────────────────────────────────────────────────────────
+### Stack management
 
-# View logs for a specific service
+#### View logs for a specific service
+```
 docker compose logs -f ollama
+```
 
-# Check RAM usage per container (live)
+#### Check RAM usage per container (live)
+```
 docker stats
+```
 
-# Check RAM usage (snapshot)
+#### Check RAM usage (snapshot)
+```
 docker stats --no-stream
+```
 
-# Restart a single service
+#### Restart a single service
+```
 docker compose restart open-webui
+```
 
-# Stop core stack
+#### Stop core stack
+```
 docker compose down
+```
 
-# Stop full stack (all compose files)
+#### Stop full stack (all compose files)
+```
 docker compose `
   -f docker-compose.yml `
   -f compose/agents.yml `
   -f compose/automation.yml `
   -f compose/ui-extras.yml `
   down
+```
 
-# WARNING: deletes all data volumes
+**WARNING: deletes all data volumes**
+```
 docker compose down -v
+```
 
-# ── DeerFlow ────────────────────────────────────────────────────────────────
+### DeerFlow 
 
-# Start
+#### Start
+```
 cd D:\hotlanta_git\deer-flow && docker compose up -d
+```
 
-# Stop
+#### Stop
+```
 cd D:\hotlanta_git\deer-flow && docker compose down
+```
 
-# Rebuild after config changes
+#### Rebuild after config changes
+```
 cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
+```
 
-# ── Agents ──────────────────────────────────────────────────────────────────
+### Agents
 
-# Use Aider coding agent
+#### Use Aider coding agent
+```
 docker exec -it aider aider --model ollama/qwen2.5-coder:7b-instruct-q4_K_M
+```
 
-# AIO Sandbox terminal
-# → http://localhost:8090
+### AIO Sandbox terminal
+```
+http://localhost:8090
+```
 
-# AIO Sandbox VSCode (inspect agent file output)
-# → http://localhost:8090/code-server/
+#### AIO Sandbox VSCode (inspect agent file output)
+```
+http://localhost:8090/code-server/
+```
 
-# AIO Sandbox Jupyter (TruLens evaluation notebooks)
-# → http://localhost:8090/jupyter
+#### AIO Sandbox Jupyter (TruLens evaluation notebooks)
+```
+http://localhost:8090/jupyter
+```
 
-# ── Guardrails ───────────────────────────────────────────────────────────────
+### Guardrails
 
-# Check NeMo Guardrails health
+#### Check NeMo Guardrails health
+```
 curl http://localhost:8010/health
+```
 
-# Test guardrails with a query
+#### Test guardrails with a query
+```
 curl -X POST http://localhost:8010/v1/chat/completions `
   -H "Content-Type: application/json" `
   -d "{\"messages\": [{\"role\": \"user\", \"content\": \"What is the system voltage?\"}]}"
+```
 
-# Restart guardrails after editing rails.co
+#### Restart guardrails after editing rails.co
+```
 docker compose -f docker-compose.yml -f compose/guardrails.yml restart nemo-guardrails
+```
 
-# Run TruLens RAG evaluation (inside AIO Sandbox terminal)
-# python /home/gem/trulens_eval.py
+#### Run TruLens RAG evaluation (inside AIO Sandbox terminal)
+```
+python /home/gem/trulens_eval.py
+```
 
-# Run QWED verification test (inside AIO Sandbox terminal)
-# python /home/gem/qwed_verify.py
+#### Run QWED verification test (inside AIO Sandbox terminal)
+```
+python /home/gem/qwed_verify.py
+```
 
-# View TruLens scores in Langfuse
-# → http://localhost:3020
+#### View TruLens scores in Langfuse
+```
+http://localhost:3020
+```
 
-# ── RAG ─────────────────────────────────────────────────────────────────────
+### RAG
 
-# Ingest documents
-# → http://localhost:3000 → Documents → Upload
+#### Ingest documents
+```
+http://localhost:3000 → Documents → Upload
+```
 
-# View Qdrant vector collections
-# → http://localhost:6333/dashboard
-# ── Portainer ────────────────────────────────────────────────────────────────
+#### View Qdrant vector collections
+```
+http://localhost:6333/dashboard
+```
 
-# Open Portainer Docker management UI
-# → https://localhost:9443  (HTTPS — click through self-signed cert warning)
-# → http://localhost:9000   (HTTP — no cert warning)
+### Portainer
 
-# First-time setup (must complete within 5 minutes of first start):
-#   1. Open https://localhost:9443
-#   2. Create admin username + password
-#   3. Click "Get Started" → select "local" environment
-#   4. All ai-stack containers appear immediately
+#### Open Portainer Docker management UI
+```
+https://localhost:9443  (HTTPS — click through self-signed cert warning)
+```
+```
+http://localhost:9000   (HTTP — no cert warning)
+```
 
-# Update Portainer to latest version
-# docker pull portainer/portainer-ce:latest && docker compose restart portainer
+#### First-time setup (must complete within 5 minutes of first start):
+1. Open https://localhost:9443
+2. Create admin username + password
+3. Click "Get Started" → select "local" environment
+4. All ai-stack containers appear immediately
+
+#### Update Portainer to latest version
+```
+docker pull portainer/portainer-ce:latest && docker compose restart portainer
 ```
 
 ---
