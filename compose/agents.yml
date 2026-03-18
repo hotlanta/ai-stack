@@ -1,0 +1,199 @@
+# =============================================================================
+# AGENTS STACK — compose/agents.yml
+# AI coding agents + AIO Sandbox (all-in-one MCP + browser + VSCode + shell)
+#
+# Start with core:
+#   docker compose -f docker-compose.yml -f compose/agents.yml up -d
+#
+# Includes:
+#   - AIO Sandbox:  All-in-one agent environment (browser, shell, file, MCP hub,
+#                   VSCode, Jupyter) — replaces 4 separate MCP containers
+#   - Aider:        Best-in-class CLI coding agent, uses qwen3-coder via Ollama
+#
+# DeerFlow runs standalone — see D:\hotlanta_git\deer-flow\
+# =============================================================================
+
+name: local-ai-core
+
+networks:
+  ai-net:
+    external: true
+
+volumes:
+  aio-workspace:    # shared across AIO Sandbox + Aider (unified filesystem)
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # DEERFLOW — Multi-Agent Research Orchestration (DeerFlow 2.0)
+  # Built on LangGraph + LangChain, runs full research pipelines
+  # IMPORTANT: No pre-built public Docker image exists — must build from source
+  #
+  # DeerFlow runs its OWN docker-compose — run it separately from its repo:
+  #   cd D:\hotlanta_git\deer-flow
+  #   docker compose build && docker compose up -d
+  #
+  # UI:          http://localhost:2026
+  # API:         http://localhost:2026/api
+  # LangGraph:   http://localhost:2026/api/langgraph
+  #
+  # Config files to edit before first build:
+  #   D:\hotlanta_git\deer-flow\config.yaml  — Ollama, AIO Sandbox, SearXNG tools
+  #   D:\hotlanta_git\deer-flow\.env         — SEARXNG_URL, CORS_ORIGINS
+  #
+  # Note: DeerFlow 2.0 (Feb 2026 rewrite) is best run standalone due to its
+  # multi-service architecture (nginx + backend + frontend + gateway).
+  # ---------------------------------------------------------------------------
+  # deerflow is intentionally commented out — run it standalone (see above)
+  #
+  # deerflow:
+  #   build:
+  #     context: D:/hotlanta_git/deer-flow
+  #     dockerfile: Dockerfile
+  #   container_name: deerflow
+  #   ports:
+  #     - "2026:2026"
+  #   networks:
+  #     - ai-net
+  #   restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # AIO SANDBOX — All-in-One Agent Sandbox (replaces mcp-filesystem/git/fetch/qdrant)
+  # Single container combining: Browser+VNC, VSCode, Shell, File, Jupyter, MCP Hub
+  # Public image: ghcr.io/agent-infra/sandbox:latest (pulls fine, no auth needed)
+  # Apache 2.0 license — open source, by ByteDance Agent Infra team
+  #
+  # Access points (all via http://localhost:8090/...):
+  #   /          → Dashboard with all tools
+  #   /vnc/      → Browser with VNC (visual browser automation)
+  #   /code-server/ → VSCode in the browser
+  #   /mcp       → Unified MCP hub (all tools in one endpoint)
+  #
+  # What this replaces from the old setup:
+  #   ❌ mcp-filesystem  → ✅ AIO Sandbox /mcp (file tools)
+  #   ❌ mcp-git         → ✅ AIO Sandbox /mcp (shell + git commands)
+  #   ❌ mcp-fetch       → ✅ AIO Sandbox /mcp (browser + fetch tools)
+  #   ❌ mcp-qdrant      → ✅ AIO Sandbox /mcp (extensible via SDK)
+  #
+  # What you gain on top:
+  #   ✅ VNC browser automation (agents can browse the web visually)
+  #   ✅ VSCode in browser (edit code with full IDE features)
+  #   ✅ Jupyter notebooks (data exploration, RAG testing)
+  #   ✅ Isolated Python + Node.js code execution (sandboxed, safe)
+  #   ✅ Unified MCP endpoint for all tools (lower token cost vs 4 separate)
+  #   ✅ Shared filesystem across all tools (browser download → instantly in shell)
+  #
+  # How to connect from Open WebUI / LobeChat / Flowise / DeerFlow:
+  #   MCP URL: http://aio-sandbox:8080/mcp
+  #
+  # CPU / RAM note:
+  #   Full stack (all services): ~1.5–2GB RAM
+  #   Lean mode (disable Jupyter + VSCode): ~800MB RAM
+  #   Set DISABLE_JUPYTER=true and DISABLE_CODE_SERVER=true if RAM is tight
+  # ---------------------------------------------------------------------------
+  aio-sandbox:
+    image: ghcr.io/agent-infra/sandbox:latest
+    container_name: aio-sandbox
+    ports:
+      - "8090:8080"     # Main dashboard + all services
+    volumes:
+      - aio-workspace:/home/gem          # persistent workspace
+      - ~/.gitconfig:/root/.gitconfig:ro # share host git config
+      - ~/.ssh:/root/.ssh:ro             # share host SSH keys (read-only)
+      # Vale-MCP source from Windows host — mounted read-only
+      # node_modules will be rebuilt inside the container (see setup below)
+      - /d/hotlanta_git/Vale-MCP:/home/gem/vale-mcp-src:ro
+    networks:
+      - ai-net
+    security_opt:
+      - seccomp:unconfined    # required for browser + sandbox isolation
+    shm_size: '2gb'           # required for Chromium browser
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # allows sandbox to reach host/Ollama
+    environment:
+      WORKSPACE: "/home/gem"
+      # Point browser proxy through host if needed (leave blank if not using proxy)
+      PROXY_SERVER: ""
+      # JWT auth — leave blank for local use, set a key for network-exposed installs
+      JWT_PUBLIC_KEY: ""
+      # Lean mode — uncomment to save ~600MB RAM on tight systems
+      # DISABLE_JUPYTER: "true"
+      # DISABLE_CODE_SERVER: "true"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    # ---------------------------------------------------------------------------
+    # VALE-MCP ONE-TIME SETUP (run once after first container start)
+    # Your Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only)
+    # Node modules must be rebuilt inside the container — Windows binaries won't
+    # run on Linux. The rebuilt copy lives in the persistent aio-workspace volume
+    # so this only needs to be done ONCE, not on every container restart.
+    #
+    # Open a terminal at http://localhost:8090 and run:
+    #
+    #   # 1. Install Vale CLI binary (Linux version)
+    #   wget -q https://github.com/errata-ai/vale/releases/latest/download/vale_Linux_64-bit.tar.gz
+    #   tar -xzf vale_Linux_64-bit.tar.gz && mv vale /usr/local/bin/ && rm vale_Linux_64-bit.tar.gz
+    #
+    #   # 2. Copy source from read-only mount to writable workspace
+    #   cp -r /home/gem/vale-mcp-src /home/gem/vale-mcp
+    #
+    #   # 3. Rebuild node_modules for Linux (replaces Windows binaries)
+    #   cd /home/gem/vale-mcp && npm install && npm run build
+    #
+    #   # 4. Create Vale config for technical documentation
+    #   cat > /home/gem/.vale.ini << 'EOF'
+    #   StylesPath = /home/gem/.vale/styles
+    #   MinAlertLevel = suggestion
+    #   [*.md]
+    #   BasedOnStyles = Vale, Microsoft, write-good
+    #   EOF
+    #
+    #   # 5. Download Vale styles
+    #   vale sync
+    #
+    #   # 6. Verify Vale works
+    #   echo "This is a test sentence." | vale --ext=.md
+    #
+    # After this, Vale persists in aio-workspace across container restarts.
+    # To update Vale-MCP when you pull changes on Windows:
+    #   cp -r /home/gem/vale-mcp-src/. /home/gem/vale-mcp/ && cd /home/gem/vale-mcp && npm install && npm run build
+    # ---------------------------------------------------------------------------
+
+  # ---------------------------------------------------------------------------
+  # AIDER — AI Coding Agent (CLI)
+  # Uses AIO Sandbox's shared workspace so changes are visible in VSCode + browser
+  # Access: docker exec -it aider aider --model ollama/qwen3-coder:7b-q4_K_M
+  # ---------------------------------------------------------------------------
+  aider:
+    image: paulgauthier/aider:latest
+    container_name: aider
+    volumes:
+      - aio-workspace:/workspace    # same volume as AIO Sandbox — shared filesystem
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+    networks:
+      - ai-net
+    working_dir: /workspace
+    environment:
+      - OLLAMA_API_BASE=http://ollama:11434
+      - AIDER_MODEL=ollama/qwen3-coder:7b-q4_K_M
+      - AIDER_DARK_MODE=true
+      - AIDER_STREAM=true
+    stdin_open: true
+    tty: true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          memory: 512M

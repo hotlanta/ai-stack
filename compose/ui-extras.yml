@@ -1,0 +1,141 @@
+# =============================================================================
+# UI EXTRAS STACK — compose/ui-extras.yml
+# Alternative/additional chat interfaces
+#
+# Start with core:
+#   docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d
+#
+# Includes:
+#   - LobeChat:     Modern multi-model UI with MCP + plugin support
+#   - AnythingLLM:  Doc-centric RAG workspace (keep if you prefer it over OWUI)
+#
+# Note: You don't need both LobeChat AND Open WebUI running at the same time.
+# LobeChat is better for: multi-model switching, plugins, clean UX
+# Open WebUI is better for: built-in RAG, image gen, more community plugins
+# =============================================================================
+
+name: local-ai-core
+
+networks:
+  ai-net:
+    external: true
+
+volumes:
+  lobechat-db:
+  anythingllm-storage:
+  anythingllm-vector-cache:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # LOBECHAT — Modern Multi-Model Chat UI
+  # Excellent MCP integration, plugin ecosystem, clean design
+  # Supports: Ollama, OpenAI-compatible APIs, multiple providers simultaneously
+  # UI: http://localhost:3100
+  #
+  # Why use LobeChat vs Open WebUI?
+  #   - Better multi-provider model switching in one UI
+  #   - Native MCP server support (connect your mcp-* services directly)
+  #   - Cleaner mobile-friendly design
+  #   - Artifact rendering (like Claude's canvas)
+  #   - Plugin marketplace (search, image gen, etc.)
+  # ---------------------------------------------------------------------------
+  lobechat-db:
+    image: postgres:16-alpine
+    container_name: lobechat-db
+    volumes:
+      - lobechat-db:/var/lib/postgresql/data
+    networks:
+      - ai-net
+    environment:
+      - POSTGRES_USER=lobechat
+      - POSTGRES_PASSWORD=lobechat-secret
+      - POSTGRES_DB=lobechat
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lobechat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  lobechat:
+    image: lobehub/lobe-chat-database:latest
+    container_name: lobechat
+    ports:
+      - "3100:3210"
+    networks:
+      - ai-net
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://lobechat:lobechat-secret@lobechat-db:5432/lobechat
+      # Auth (change these!)
+      - AUTH_SECRET=change-me-lobechat-auth-secret
+      - NEXT_AUTH_SECRET=change-me-lobechat-nextauth
+      # Local Ollama integration
+      - OLLAMA_PROXY_URL=http://ollama:11434
+      - ENABLED_OLLAMA=1
+      # Optional: point to OpenAI-compatible gateway if you add LiteLLM
+      # - OPENAI_API_BASE=http://litellm:4000
+      # MCP hub — AIO Sandbox provides unified MCP endpoint (replaces old
+      # mcp-filesystem + mcp-fetch + mcp-git + mcp-qdrant containers)
+      - MCP_HUB_URL=http://aio-sandbox:8080/mcp
+      # Search
+      - SEARXNG_URL=http://searxng:8080
+    depends_on:
+      lobechat-db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # ANYTHINGLLM — Document-Centric RAG Workspace
+  # Best-in-class for: uploading docs, building workspace-specific knowledge bases
+  # Keep this if you do a lot of document Q&A (vs general chat in Open WebUI)
+  # UI: http://localhost:3001
+  # ---------------------------------------------------------------------------
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: anythingllm
+    ports:
+      - "3001:3001"
+    volumes:
+      - anythingllm-storage:/app/server/storage
+      - anythingllm-vector-cache:/app/server/vector-cache
+    networks:
+      - ai-net
+    environment:
+      - STORAGE_DIR=/app/server/storage
+      - JWT_SECRET=change-me-anythingllm-jwt-secret
+      # LLM: local Ollama — qwen3:4b matches Qwen2.5-7B quality at half the RAM
+      - LLM_PROVIDER=ollama
+      - OLLAMA_BASE_PATH=http://ollama:11434
+      - OLLAMA_MODEL_PREF=qwen3:4b-q4_K_M
+      # Embeddings: bge-m3 (8192-token ctx, sparse+dense retrieval, MIT license)
+      # Pull first: docker exec ollama ollama pull bge-m3
+      - EMBEDDING_ENGINE=ollama
+      - EMBEDDING_BASE_PATH=http://ollama:11434
+      - EMBEDDING_MODEL_PREF=bge-m3
+      # Vector DB: Qdrant
+      - VECTOR_DB=qdrant
+      - QDRANT_ENDPOINT=http://qdrant:6333
+      # Chunking: 800 tokens — well within bge-m3's 8192-token context window
+      # (was 400 when using mxbai-embed-large which had a 512-token limit)
+      - MAX_FILE_SIZE_MB=200
+      - MAX_TEXT_CHUNK_SIZE=800    # tokens — safe within bge-m3's 8192 ceiling
+      - TEXT_CHUNK_OVERLAP=100     # ~12% overlap for context continuity
+      - AUTO_START=true
+    depends_on:
+      - ollama
+      - qdrant
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G

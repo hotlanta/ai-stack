@@ -1,0 +1,163 @@
+# =============================================================================
+# AUTOMATION STACK — compose/automation.yml
+# Workflow automation, observability, visual agent builder
+#
+# Start with core:
+#   docker compose -f docker-compose.yml -f compose/automation.yml up -d
+#
+# Includes:
+#   - n8n:       Event-driven workflow automation (Zapier/Make, self-hosted)
+#   - Langfuse:  LLM tracing, evals, prompt management (OSS LangSmith)
+#   - Flowise:   Visual LangChain/agent workflow builder
+# =============================================================================
+
+name: local-ai-core
+
+networks:
+  ai-net:
+    external: true
+
+volumes:
+  n8n-data:
+  langfuse-db:
+  flowise-data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # N8N — Workflow Automation
+  # Event-driven automation: webhooks, schedules, API calls, AI nodes
+  # Has native AI/LLM nodes that connect directly to Ollama
+  # UI: http://localhost:5678
+  #
+  # Key use cases:
+  #   - Trigger agent runs on file drop, schedule, or webhook
+  #   - Connect Ollama → Qdrant → email/Slack pipelines
+  #   - Automate document ingestion into RAG
+  #   - Orchestrate multi-step workflows without code
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    networks:
+      - ai-net
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678
+      - N8N_EDITOR_BASE_URL=http://localhost:5678
+      # Auth (change these!)
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=change-me-n8n
+      # AI integrations — point to local Ollama
+      - N8N_AI_ENABLED=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # Timezone
+      - GENERIC_TIMEZONE=UTC
+      # Telemetry off
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # LANGFUSE — LLM Observability + Tracing
+  # Open-source LangSmith alternative — trace every LLM call, eval outputs
+  # UI: http://localhost:3020
+  #
+  # Key use cases:
+  #   - Debug why your RAG pipeline returns bad answers
+  #   - Track token usage and latency per model
+  #   - Run evals on prompt changes
+  #   - Manage prompt versions (prompt registry)
+  #   - Works with LangChain, LlamaIndex, raw Ollama calls
+  # ---------------------------------------------------------------------------
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: langfuse-db
+    volumes:
+      - langfuse-db:/var/lib/postgresql/data
+    networks:
+      - ai-net
+    environment:
+      - POSTGRES_USER=langfuse
+      - POSTGRES_PASSWORD=langfuse-secret
+      - POSTGRES_DB=langfuse
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: ghcr.io/langfuse/langfuse:latest
+    container_name: langfuse
+    ports:
+      - "3020:3000"
+    networks:
+      - ai-net
+    environment:
+      - DATABASE_URL=postgresql://langfuse:langfuse-secret@langfuse-db:5432/langfuse
+      - NEXTAUTH_URL=http://localhost:3020
+      - NEXTAUTH_SECRET=change-me-langfuse-nextauth-secret
+      - SALT=change-me-langfuse-salt
+      # Self-hosted: disable telemetry
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # FLOWISE — Visual LangChain / Agent Workflow Builder
+  # Drag-and-drop builder for RAG pipelines, agent chains, chatbots
+  # UI: http://localhost:3030
+  #
+  # Note: Think of this as the "no-code" layer on top of LangChain/LlamaIndex
+  # Use n8n for event automation, Flowise for agent chain design
+  # ---------------------------------------------------------------------------
+  flowise:
+    image: flowiseai/flowise:latest
+    container_name: flowise
+    ports:
+      - "3030:3000"
+    volumes:
+      - flowise-data:/root/.flowise
+    networks:
+      - ai-net
+    environment:
+      - PORT=3000
+      - FLOWISE_USERNAME=admin
+      - FLOWISE_PASSWORD=change-me-flowise
+      # Point to local Ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # Point to Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      # Langfuse tracing (connect your Flowise chains to Langfuse)
+      - LANGFUSE_BASE_URL=http://langfuse:3000
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G

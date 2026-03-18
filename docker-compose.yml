@@ -1,0 +1,340 @@
+# =============================================================================
+# LOCAL AI STACK - CORE SERVICES (CPU-Only, 2026)
+# Always-on essentials: Ollama, Open WebUI, Qdrant, SearXNG, Docling
+#
+# Usage:
+#   docker compose up -d                          # start core
+#   docker compose
+#     -f docker-compose.yml \
+#     -f compose/agents.yml up -d                  # + agents
+#   docker compose
+#     -f docker-compose.yml \ 
+#     -f compose/automation.yml up -d              # + n8n/Langfuse/Flowise
+#   docker compose `
+#     -f docker-compose.yml `
+#     -f compose/guardrails.yml up -d               # + NeMo Guardrails
+#   docker compose `
+#     -f docker-compose.yml `
+#     -f compose/ui-extras.yml up -d                # + LobeChat/AnythingLLM
+#
+# RAM budget (16GB laptop):
+#   Core stack (no model):  ~4–5 GB  (includes Docling)
+#   + 1 model (7B q4_K_M):  ~8–9 GB
+#   OS headroom:             ~4 GB
+#   Swap: enable 4GB+ swap on host — strongly recommended
+#
+# Recommended models (pull after stack is up):
+#   ollama pull bge-m3                   # embeddings (best for technical docs)
+#   ollama pull qwen3-coder:7b-q4_K_M    # coding
+#   ollama pull phi4-mini:q4_K_M         # general/fast
+#   ollama pull qwen3:1.7b-q4_K_M        # lightweight chat (8GB RAM laptops)
+#   ollama pull qwen3:4b-q4_K_M          # best general (16GB RAM laptops)
+#   ollama pull llava:7b                 # vision / multimodal
+#
+# RAG / Chunking strategy for large technical docs:
+#   - Embedding model:  bge-m3 (8192-token ctx, sparse+dense retrieval, MIT license
+#   - Chunk size:       800 tokens (safe under mxbai's 512 token limit)
+#   - Chunk overlap:    100 tokens  (~18% overlap for context continuity)
+#   - Splitter:         Markdown Header Splitter (respects doc structure)
+#   - Min chunk size:   300 tokens (merges tiny header fragments)
+#   - Extraction:       Docling (handles PDFs, tables, multi-column layouts)
+#   - Top K:            8 results for large doc sets
+# =============================================================================
+
+name: local-ai-core
+
+networks:
+  ai-net:
+    driver: bridge
+
+volumes:
+  ollama-data:
+  open-webui-data:
+  qdrant-data:
+  searxng-data:
+  docling-cache:
+  portainer-data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # OLLAMA — LLM + Embedding Runtime
+  # CPU-optimized: low context, 1 model, 1 parallel request
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - ai-net
+    restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_PARALLEL=1        # 1 parallel request (CPU constraint)
+      - OLLAMA_MAX_LOADED_MODELS=1   # swap models, don't stack them
+      - OLLAMA_NUM_CTX=4096          # context window (reduce to 2048 if RAM tight)
+      - OLLAMA_KEEP_ALIVE=5m         # unload model after 5min idle
+      - OLLAMA_NUM_THREAD=0          # 0 = auto-detect CPU threads
+      - OLLAMA_FLASH_ATTENTION=1     # enable flash attention (CPU supported)
+    deploy:
+      resources:
+        limits:
+          memory: 10G
+        reservations:
+          memory: 4G
+    shm_size: '2gb'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # QDRANT — Vector Database
+  # Replaces pgvector/TimescaleDB — purpose-built, much lighter RAM footprint
+  # UI: http://localhost:6333/dashboard
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"   # REST API + Web UI
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - ai-net
+    restart: unless-stopped
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=WARN
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # OPEN WEBUI — Primary Chat UI + RAG
+  # Connects to Ollama + Qdrant for RAG, supports MCP tools
+  # UI: http://localhost:3000
+  #
+  # Ingestion flow:
+  #   Upload doc → Open WebUI → Docling (extraction) → chunked by token splitter
+  #   → embedded by bge-m3 → stored as vectors in Qdrant
+  #
+  # To configure chunking in the UI after startup:
+  #   Admin Panel → Settings → Documents:
+  #     Content Extraction Engine: Docling (http://docling:5001)
+  #     Text Splitter:             Token
+  #     Chunk Size:                800
+  #     Chunk Overlap:             100
+  #     Chunk Min Size Target:     300
+  #     Markdown Header Splitter:  ON
+  #     Top K:                     8
+  # ---------------------------------------------------------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+    networks:
+      - ai-net
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=change-me-please-use-random-string
+
+      # --------------- Embedding model ----------------------------------------
+      # Recommended: bge-m3 (strong hybrid retrieval) or qwen3-embedding:0.6b (faster, very good on technical)
+      # Pull first: docker exec ollama ollama pull bge-m3
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=bge-m3
+      # Batch size for embedding — keep low on CPU to avoid OOM
+      - RAG_EMBEDDING_BATCH_SIZE=4
+
+      # --------------- Vector DB ----------------------------------------------
+      - VECTOR_DB=qdrant
+      - QDRANT_URI=http://qdrant:6333
+
+      # --------------- Chunking strategy --------------------------------------
+      # Optimized for large technical docs with bge-m3 (8192 token limit)
+      - CHUNK_SIZE=800             # tokens — well within bge-m3's 8192 ceiling
+      - CHUNK_OVERLAP=100           # ~12% overlap for context continuity
+      - RAG_TOP_K=8                # return more results for large doc sets
+      - RAG_RELEVANCE_THRESHOLD=0.3 # filter out low-quality matches
+
+      # --------------- Docling extraction -------------------------------------
+      # Docling handles: PDFs with tables/columns, DOCX, PPTX, images in docs
+      # Falls back to basic extraction if Docling is unreachable
+      - CONTENT_EXTRACTION_ENGINE=docling
+      - DOCLING_SERVER_URL=http://docling:5001
+
+      # --------------- RAG context caching ------------------------------------
+      # Injects RAG context at fixed position in system message
+      # Enables KV prefix caching → near-instant follow-up responses
+      - RAG_SYSTEM_CONTEXT=True
+
+      # --------------- Web search integration ---------------------------------
+      - ENABLE_RAG_WEB_SEARCH=true
+      - RAG_WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search?q=<query>&format=json
+      - RAG_WEB_SEARCH_RESULT_COUNT=5
+      - RAG_WEB_SEARCH_CONCURRENT_REQUESTS=5
+
+    depends_on:
+      ollama:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      docling:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # DOCLING — Document Extraction Engine
+  # Converts PDFs, DOCX, PPTX into clean structured text for RAG ingestion
+  # Handles: multi-column PDFs, tables, embedded images, complex layouts
+  # Used by: Open WebUI as its content extraction engine
+  # API: http://localhost:5001
+  #
+  # Why Docling vs basic PDF parsing?
+  #   - Preserves table structure (critical for technical spec sheets)
+  #   - Detects and labels headings, lists, captions correctly
+  #   - Multi-column PDF layout detection (vendor datasheets, standards docs)
+  #   - Outputs structured JSON that Open WebUI uses for semantic chunking
+  #   - Apache 2.0 license, fully open source (IBM Research)
+  #
+  # CPU performance note:
+  #   - First extraction of a large PDF is slow (1-3 min for 500 pages)
+  #   - Results are cached — subsequent queries are instant
+  #   - Models download on first run (~500MB, cached in docling-cache volume)
+  # ---------------------------------------------------------------------------
+  docling:
+    image: ghcr.io/docling-project/docling-serve:latest
+    container_name: docling
+    ports:
+      - "5001:5001"
+    volumes:
+      - docling-cache:/root/.cache/docling   # caches downloaded ML models
+    networks:
+      - ai-net
+    environment:
+      # CPU-only mode — disables GPU acceleration (not needed on laptop)
+      - DOCLING_SERVE_DEVICE=cpu
+      # Number of workers — keep at 1-2 on CPU to avoid RAM spikes
+      - DOCLING_SERVE_NUM_WORKERS=1
+      # Enable table structure recognition (important for technical docs)
+      - DOCLING_SERVE_TABLE_STRUCTURE=true
+      # OCR for scanned PDFs (slower but handles scanned vendor manuals)
+      - DOCLING_SERVE_OCR=true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G       # needs headroom for table/OCR ML models
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s    # allow time for ML model download on first run
+
+  # ---------------------------------------------------------------------------
+  # SEARXNG — Private Metasearch Engine
+  # No API keys required, aggregates results from multiple engines
+  # UI: http://localhost:8080
+  # ---------------------------------------------------------------------------
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - searxng-data:/etc/searxng
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - ai-net
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080
+      - SEARXNG_SECRET_KEY=change-me-searxng-secret
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+# ---------------------------------------------------------------------------
+  # PORTAINER — Docker Management UI (Community Edition v2.39+)
+  # Manage all containers, images, volumes, networks, and compose stacks
+  # from a single web UI — no command line needed for day-to-day operations.
+  # UI: https://localhost:9443  (HTTPS, self-signed cert — click through warning)
+  # UI: http://localhost:9000   (HTTP fallback if you prefer no cert warning)
+  #
+  # Key capabilities for your stack:
+  #   - Start/stop/restart any container with one click
+  #   - View real-time logs for all services in one place
+  #   - Inspect RAM/CPU usage per container visually
+  #   - Edit and redeploy compose stacks from the browser
+  #   - Manage Docker volumes (inspect, browse, delete)
+  #   - Pull new images and manage image versions
+  #   - View and manage Docker networks
+  #
+  # First-time setup:
+  #   1. Open https://localhost:9443
+  #   2. Create an admin username and password (you have 5 minutes on first run)
+  #   3. Select "Get Started" → click "local" environment
+  #   4. You'll see all your ai-stack containers immediately
+  #
+  # Edition: Community Edition (CE) — free, open source, zlib license
+  # No license key required. Business Edition adds RBAC + registry management.
+  #
+  # Important: Portainer needs access to the Docker socket to manage containers.
+  # This is standard practice for Docker management UIs. Do NOT expose
+  # port 9443 outside your local machine.
+  #
+  # RAM: ~100MB — lightest service in the entire stack
+  # ---------------------------------------------------------------------------
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9443:9443"   # HTTPS UI (recommended)
+      - "9000:9000"   # HTTP UI (fallback — no cert warning)
+      - "8000:8000"   # Edge agent tunnel (can be removed if not using edge agents)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket — required
+      - portainer-data:/data                        # persistent settings + users
+    networks:
+      - ai-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

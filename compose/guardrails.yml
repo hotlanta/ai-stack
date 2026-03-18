@@ -1,0 +1,103 @@
+# =============================================================================
+# GUARDRAILS STACK — compose/guardrails.yml
+# Hallucination prevention, output verification, RAG evaluation
+#
+# Start with core:
+#   docker compose -f docker-compose.yml -f compose/guardrails.yml up -d
+#
+# Or with full stack:
+#   docker compose `
+#     -f docker-compose.yml `
+#     -f compose/agents.yml `
+#     -f compose/automation.yml `
+#     -f compose/guardrails.yml `
+#     -f compose/ui-extras.yml `
+#     up -d
+#
+# Includes:
+#   - NeMo Guardrails:  Runtime input/output rails + RAG fact-checking
+#   - TruLens:          RAG triad evaluation (runs inside AIO Sandbox)
+#   - QWED:             Deterministic verification (runs inside AIO Sandbox)
+#
+# How they work together:
+#   User query
+#     → NeMo Guardrails (input rail — block bad queries)
+#     → Ollama LLM + Qdrant RAG
+#     → NeMo Guardrails (output rail — check groundedness)
+#     → TruLens (log RAG triad scores to Langfuse)
+#     → QWED (verify math/code/SQL outputs deterministically)
+#     → User response
+# =============================================================================
+
+name: local-ai-core
+
+networks:
+  ai-net:
+    external: true
+
+volumes:
+  nemo-guardrails-config:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # NEMO GUARDRAILS — Runtime Input/Output Rails
+  # Open source (Apache 2.0) by NVIDIA — builds from source (no pre-built image)
+  # Provides:
+  #   - Input rails:    block off-topic, harmful, or adversarial queries
+  #   - Output rails:   verify responses are grounded in retrieved context
+  #   - Fact-checking:  self-check rail compares response against RAG context
+  #   - Topic rails:    restrict agent to specific domains (e.g. only answer
+  #                     questions about your ingested technical docs)
+  #
+  # API: http://localhost:8010/v1  (OpenAI-compatible)
+  # Health: http://localhost:8010/health
+  #
+  # Build note: No pre-built public image — built from source on first run.
+  # First build takes ~5-10 minutes. Subsequent starts are instant.
+  #
+  # CPU note: NeMo Guardrails itself is lightweight (~200MB RAM).
+  # The self-check fact rail calls Ollama for verification — this uses
+  # your existing Ollama instance, no second model needed.
+  # ---------------------------------------------------------------------------
+  nemo-guardrails:
+    build:
+      context: ./build/nemo-guardrails
+      dockerfile: Dockerfile
+    container_name: nemo-guardrails
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./config/nemo-guardrails:/app/config    # your rails config (colang files)
+      - nemo-guardrails-config:/app/cache
+    networks:
+      - ai-net
+    environment:
+      # Point to your local Ollama instance
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # Model for guardrail checks (can be smaller/faster than your main model)
+      - GUARDRAILS_MODEL=phi4-mini:q4_K_M
+      # Main model (used when guardrails pass) — qwen3:4b matches Qwen2.5-7B quality at half the RAM
+      - MAIN_MODEL=qwen3:4b-q4_K_M
+      # Qdrant for RAG grounding checks
+      - QDRANT_URL=http://qdrant:6333
+      # Log guardrail decisions to Langfuse
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_SECRET_KEY=change-me-langfuse-secret
+      - LANGFUSE_PUBLIC_KEY=change-me-langfuse-public
+    depends_on:
+      - ollama
+      - qdrant
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

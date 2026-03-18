@@ -1,0 +1,116 @@
+# =============================================================================
+# SearXNG Settings — config/searxng/settings.yml
+# Local AI stack config: JSON output enabled, no rate limiting, no telemetry
+# =============================================================================
+
+use_default_settings: true
+
+# ============================================================================
+# General
+# ============================================================================
+general:
+  instance_name: "Local AI Search"
+  privacypolicy_url: false
+  contact_url: false
+  enable_metrics: false
+
+# ============================================================================
+# Server
+# ============================================================================
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "change-me-searxng-secret"
+  limiter: false         # disable rate limiting for local use
+  image_proxy: false     # set to true if DeerFlow image_search returns broken images
+
+# ============================================================================
+# UI
+# ============================================================================
+ui:
+  static_use_hash: true
+  default_theme: simple
+  default_locale: en
+  query_in_title: true
+  infinite_scroll: false  # disable — not useful for API consumers like DeerFlow
+
+# ============================================================================
+# Search
+# ============================================================================
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json            # REQUIRED: enables API access for Open WebUI / agents
+    - csv             # optional but useful for n8n data pipelines 
+  # Number of results to fetch per engine before deduplication
+  # Higher = better coverage, slower response
+  max_results_per_category: 10   
+
+# ============================================================================
+# Engines
+# ============================================================================
+# Only engines listed here are active — all others from use_default_settings
+# are inherited but can be overridden by adding them here with disabled: true
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    timeout: 5.0          # seconds — prevents stalling DeerFlow on slow responses
+    disabled: false
+    
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: d
+    timeout: 5.0
+    disabled: false
+    
+  - name: bing
+    engine: bing
+    shortcut: b
+    disabled: true    # enable if you want Microsoft index coverage
+  - name: brave
+    engine: brave
+    shortcut: br
+    timeout: 5.0
+    disabled: false       # good independent index, strong for technical content
+ 
+  - name: startpage
+    engine: startpage
+    shortcut: sp
+    timeout: 5.0
+    disabled: false       # Google results via privacy proxy — good redundancy
+ 
+  # Knowledge / reference
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    timeout: 3.0
+    disabled: false
+ 
+  # Technical / developer sources — important for your technical doc use case
+  - name: github
+    engine: github
+    shortcut: gh
+    timeout: 5.0
+    disabled: false
+ 
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    timeout: 5.0
+    disabled: false
+ 
+  - name: arxiv
+    engine: arxiv
+    shortcut: ax
+    timeout: 5.0
+    disabled: false       # academic papers and technical specs — used by DeerFlow research agents
+ 
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    timeout: 5.0
+    disabled: false       # useful for technical troubleshooting and community knowledge
