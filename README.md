@@ -15,7 +15,7 @@ No GPU required. No cloud APIs. No data leaving your machine.
 
 ```
 
-D:\
+D:\hotlanta_git\
 ├── ai-stack\                           # Your Docker Compose stack (this repo)
 │   ├── docker-compose.yml              # CORE: Ollama, Open WebUI, Qdrant, SearXNG, Docling, Portainer
 │   ├── compose\
@@ -131,69 +131,129 @@ User response
 
 ---
 
+## Sequence order
+
+| Phase | Action | Where |
+|---|---|---|
+| Phase 1 | Core stack up and healthy | [Service Map](#service-map) |
+| During Phase 1 | Portainer setup must be done within 5 minutes of first start | Browser :9443 |
+| Phase 2 | Pull Ollama models (while core is running | [Pull models](#2-pull-recommended-ollama-models) |
+| Phase 3 | Configure Open WebUI RAG (one-time, core must be running | Browser :3000 |
+| Phase 4 | Start agents stack | [Start agents stack](#5-add-optional-layers) |
+| During Phase 4 | Vale-MCP setup where agents must be running | AIO Sandbox terminal at :8090 |
+| Phase 5 | Start automation stack |  |
+| Phase 6 | Start guardrails stack - *Note:* First run builds NeMo from source — allow ~10 minutes. Verify! | Mounted Config files |
+| Phase 7 | TruLens setup (agents must be running) |  AIO Sandbox terminal at :8090 |
+| Phase 8 | QWED setup (agents must be running) |  AIO Sandbox terminal at :8090 |
+| Phase 9 | DeerFlow (everything above should be running first) | [DeerFlow Setup](#deerflow-setup) |
+| Phase 10 | UI Extras (optional, pick one - LobeChat or AnythingLLM, any time after core) | [UI extras](#ui-extras) |
+
+---
+
 ## Quick Start
 
 ### 1. Pull required Docker images (first time only)
 
 #### Core images
+```
 docker pull ollama/ollama:latest
+```
+
+> **Start Ollama first**
+```
+docker compose up -d ollama
+```
+```
 docker pull qdrant/qdrant:latest
 docker pull ghcr.io/open-webui/open-webui:main
 docker pull searxng/searxng:latest
 docker pull ghcr.io/docling-project/docling-serve:latest
 docker pull portainer/portainer-ce:latest
+```
 
 #### Automation images
+```
 docker pull n8nio/n8n:latest
 docker pull ghcr.io/langfuse/langfuse:latest
 docker pull flowiseai/flowise:latest
 docker pull postgres:16-alpine
+```
 
 #### Agent images
+```
 docker pull ghcr.io/agent-infra/sandbox:latest
 docker pull paulgauthier/aider:latest
+```
 
-#### UI extras
+#### UI extras 
+**(choose one)**
+```
 docker pull lobehub/lobe-chat-database:latest
 docker pull mintplexlabs/anythingllm:latest
+```
 
 ---
 
 > **Note:** Do NOT pull `ghcr.io/bytedance/deerflow:latest` — no public image exists. DeerFlow must be built from source. See the DeerFlow Setup section below. NeMo Guardrails also has no pre-built image — it builds from source automatically on first `docker compose up` (~10 minutes, cached after that).
 
-### 2. Pull recommended Ollama models (first time only)
-
-> **Start Ollama first**
-docker compose up -d ollama
-
-> **Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
-docker exec ollama ollama pull bge-m3
-
-> **General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
-docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality
-
-> **Best general chat for 16GB RAM laptops (~4.5-5GB)**
-docker exec ollama ollama pull qwen3:4b-q4_K_M
-
-> **Best coding model for CPU (~4.5-5GB)**
-docker exec ollama ollama pull qwen3-coder:7b-q4_K_M
-
-> **Fast small general + reasoning / guardrail judge model) (~2-3GB)**
-docker exec ollama ollama pull phi4-mini:q4_K_M # or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents
-
-> **Optional: vision / multimodal (~4–6 GB)**
-docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available
-
 ---
-### 3. Start core stack
+
+### 2. Start core stack
+
+Before starting the core stack the first time, review [Security Checklist](#security-checklist).
+
 ```
-cd D:\ai-stack
+cd D:\hotlanta_git\ai-stack
 docker compose up -d
 ```
 
-> **Note:** Docling will download its ML models (~500MB) on first startup.
+> **Note:** 
+> * Portainer setup must be done within 5 minutes of first start. See [Portainer setup](#portainer)
+> * Docling will download its ML models (~500MB) on first startup.
 > This only happens once — subsequent starts are fast.
 > Allow 2–5 minutes on first run before uploading documents.
+
+---
+
+### 3. Pull recommended Ollama models 
+**(first time only)**
+
+> **Start Ollama first**
+```
+docker compose up -d ollama
+```
+
+> **Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
+```
+docker exec ollama ollama pull bge-m3
+```
+
+> **General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
+```
+docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality
+```
+
+> **Best general chat for 16GB RAM laptops (~4.5-5GB)**
+```
+docker exec ollama ollama pull qwen3:4b-q4_K_M
+```
+
+> **Best coding model for CPU (~4.5-5GB)**
+```
+docker exec ollama ollama pull qwen3-coder:7b-q4_K_M
+```
+
+> **Fast small general + reasoning / guardrail judge model) (~2-3GB)**
+```
+docker exec ollama ollama pull phi4-mini:q4_K_M 
+```
+**or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents**
+
+> **Optional: vision / multimodal (~4–6 GB)**
+```
+docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available
+```
+---
 
 ### 4. Configure RAG chunking in Open WebUI (one-time setup)
 After core is running, go to **http://localhost:3000**:
@@ -211,6 +271,8 @@ These settings are pre-configured via environment variables as defaults,
 but confirming them in the UI ensures they're applied correctly.
 
 BGE-M3 supports an 8192-token context window — far larger than mxbai-embed-large's 512-token limit. Larger chunks preserve more context per passage and improve retrieval coherence on long technical documents.
+
+---
 
 ### 5. Add optional layers
 
@@ -235,15 +297,20 @@ curl http://localhost:8010/health
 ```
 
 > **UI extra -- pick one**
-```powershell
-# LobeChat (recommended if you want MCP + multi-model)
-docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lobechat-db
 
-# AnythingLLM (recommended if you do heavy document RAG)
+**LobeChat (recommended if you want MCP + multi-model)**
+```
+docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lobechat-db
+```
+
+**AnythingLLM (recommended if you do heavy document RAG)**,
+```
 docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d anythingllm
 ```
 
-### 9. Full stack (everything)
+---
+
+### 6. Full stack (everything)
 ```powershell
 docker compose \
   -f docker-compose.yml \
@@ -255,16 +322,22 @@ docker compose \
 ```
 
 ---
-## DeerFlow Setup (standalone — first time only)
+
+## DeerFlow Setup 
+**(standalone — first time only)**
 DeerFlow has no pre-built public Docker image and runs as its own separate stack.
 1. Clone the repo (skip if already at D:\hotlanta_git\deer-flow)
+```
 cd D:\hotlanta_git
 git clone https://github.com/bytedance/deer-flow.git
+```
 
 2. Create config files from examples
+```
 cd deer-flow
 copy .env.example .env
 copy config.example.yaml config.yaml
+```
 
 3. Add the custom SearXNG wrapper (copy from this repo)
 mkdir backend\src\community\searxng
@@ -273,14 +346,57 @@ mkdir backend\src\community\searxng
 4. Edit config.yaml — configure Ollama, AIO Sandbox, SearXNG tools
 > **Edit .env — set SEARXNG_URL and CORS_ORIGINS (see deerflow-config folder)**
 
-5. Build and start (~10 minutes first time)
+5. Set DEER_FLOW_ROOT — required by gateway and langgraph
+**To make it permanent (so you don't have to set it every time)**
+```
+[System.Environment]::SetEnvironmentVariable("DEER_FLOW_ROOT", "D:\hotlanta_git\deer-flow", "User")
+```
+
+6. Create extensions_config.json from the example
+```
+cd D:\hotlanta_git\deer-flow
+copy extensions_config.example.json extensions_config.json
+```
+7. Create frontend/.env if doesn't already exist
+8. Check if frontend has an example env file
+```
+dir frontend
+```
+If there's a frontend/.env.example, copy it:
+```
+copy frontend\.env.example frontend\.env
+```
+If there isn't one, create a minimal blank file:
+```
+New-Item frontend\.env -ItemType File
+```
+9. Create the logs/ directory (gateway and langgraph write logs there)
+```
+mkdir D:\hotlanta_git\deer-flow\logs
+```
+10.  Use the correct nginx config for your setup
+The compose file defaults to nginx.conf but the comment says local/AIO mode (which is yours — no Kubernetes) should use nginx.local.conf. Set this in your .env:
+**Open .env and add this line**
+```
+NGINX_CONF=nginx.local.conf
+```
+
+11.  Build and start (~10 minutes first time)
+```
 docker compose build
 docker compose up -d
+```
 
 #### Access DeerFlow at http://localhost:2026
 
-To stop: cd D:\hotlanta_git\deer-flow && docker compose down
-To update: git pull && docker compose build && docker compose up -d
+To stop: 
+```
+cd D:\hotlanta_git\deer-flow && docker compose down
+```
+To update: 
+```
+git pull  && docker compose build && docker compose up -d
+```
 
 ---
 > **Adding Skills to DeerFlow**
@@ -289,17 +405,20 @@ They keep the context window lean — only the skill description loads at startu
 full instructions load only when the task needs them.
 
 > **Clone any skill repo into deer-flow/skills/**
+```
 git clone https://github.com/author/skill-name.git skills/skill-name
+```
 
 > **Rebuild**
+```
 cd D:\hotlanta_git\deer-flow
 docker compose build && docker compose up -d
-
+```
 
 The visualise skill lets agents generate interactive SVG diagrams, HTML charts, flowcharts, and explainers inline — triggered by phrases like "show me a diagram of..." or "visualise the architecture of...".
 
 To update a skill after pulling changes:
-```powershell
+```
 cd D:\hotlanta_git\deer-flow\skills\visualise && git pull
 cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
 ```
@@ -309,33 +428,47 @@ cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
 Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only).
 After starting the agents stack, open the terminal at http://localhost:8090:
 1. Install Vale CLI (Linux binary)
+```
 wget -q https://github.com/errata-ai/vale/releases/latest/download/vale_Linux_64-bit.tar.gz
 tar -xzf vale_Linux_64-bit.tar.gz && mv vale /usr/local/bin/ && rm vale_Linux_64-bit.tar.gz
 vale --version
+```
 
 2. Copy source from read-only mount to writable workspace
+```
 cp -r /home/gem/vale-mcp-src /home/gem/vale-mcp
+```
 
 3. Rebuild node_modules for Linux (Windows binaries won't run in the container)
+```
 cd /home/gem/vale-mcp && npm install && npm run build
+```
 
 4. Create Vale config for technical documentation
+```
 cat > /home/gem/.vale.ini << 'EOF'
 StylesPath = /home/gem/.vale/styles
 MinAlertLevel = suggestion
 [*.md]
 BasedOnStyles = Vale, Microsoft, write-good
 EOF
+```
 
 5. Download Vale styles (one-time, requires internet)
+```
 vale sync
+```
 
 6. Verify
+```
 echo "This is a very unique sentence you should utilize." | vale --ext=.md
+```
 
 Vale persists in aio-workspace — no reinstall needed after container restarts.
 To update Vale-MCP after a git pull on Windows:
+```
 cp -r /home/gem/vale-mcp-src/. /home/gem/vale-mcp/ && cd /home/gem/vale-mcp && npm install && npm run build
+```
 
 
 ---
@@ -406,7 +539,7 @@ if not result["verified"]:
 
 ## NeMo Guardrails Configuration
 
-Rails are defined in `D:\ai-stack\config\nemo-guardrails\rails.co`.
+Rails are defined in `D:\hotlanta_git\ai-stack\config\nemo-guardrails\rails.co`.
 Customize them for your domain — the defaults block off-topic queries,
 jailbreaks, and PII requests, and check all outputs for groundedness.
 
@@ -422,7 +555,6 @@ http://nemo-guardrails:8010
 ```
 
 ---
-
 
 ## RAM Budget Guide
 
