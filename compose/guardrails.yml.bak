@@ -34,7 +34,6 @@ name: local-ai-core
 networks:
   ai-net:
     external: true
-    name: local-ai-core_ai-net
 
 volumes:
   nemo-guardrails-config:
@@ -77,14 +76,14 @@ services:
       # Point to your local Ollama instance
       - OLLAMA_BASE_URL=http://ollama:11434
       # Model for guardrail checks (can be smaller/faster than your main model)
-      - GUARDRAILS_MODEL=phi4-mini:3.8b-q4_K_M
-      # Main model (used when guardrails pass)
+      - GUARDRAILS_MODEL=phi4-mini:q4_K_M
+      # Main model (used when guardrails pass) — qwen3:4b matches Qwen2.5-7B quality at half the RAM
       - MAIN_MODEL=qwen3:4b-q4_K_M
       # Qdrant for RAG grounding checks
       - QDRANT_URL=http://qdrant:6333
       # Log guardrail decisions to Langfuse
-      - LANGFUSE_HOST=http://langfuse:3020
-      - $1653d6acc4a0516957d8dace83a5556aeed40c7061cfdd81ecb96389f16c94eeff540370b1dba30505849649e7e1d1d3424eaabc7e09122ebd4e59a4f1f3dc3c4
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_SECRET_KEY=change-me-langfuse-secret
       - LANGFUSE_PUBLIC_KEY=change-me-langfuse-public
     depends_on:
       - ollama

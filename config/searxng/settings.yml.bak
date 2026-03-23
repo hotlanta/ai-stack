@@ -20,7 +20,7 @@ general:
 server:
   port: 8080
   bind_address: "0.0.0.0"
-  secret_key: "$13a52ff0cf374c89c989f8d6d35a3106ecf79f4ee8888c9bb19851865acf217fc"
+  secret_key: "change-me-searxng-secret"
   limiter: false         # disable rate limiting for local use
   image_proxy: false     # set to true if DeerFlow image_search returns broken images
 

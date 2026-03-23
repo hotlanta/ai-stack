@@ -18,6 +18,7 @@ name: local-ai-core
 networks:
   ai-net:
     external: true
+    name: local-ai-core_ai-net
 
 volumes:
   aio-workspace:    # shared across AIO Sandbox + Aider (unified filesystem)
@@ -102,7 +103,8 @@ services:
       - ~/.ssh:/root/.ssh:ro             # share host SSH keys (read-only)
       # Vale-MCP source from Windows host — mounted read-only
       # node_modules will be rebuilt inside the container (see setup below)
-      - /d/hotlanta_git/Vale-MCP:/home/gem/vale-mcp-src:ro
+      - D:/hotlanta_git/Vale-MCP:/home/gem/vale-mcp-src:ro
+      - D:/hotlanta_git/vale_linter:/home/gem/vale-linter-src:ro
     networks:
       - ai-net
     security_opt:
@@ -173,7 +175,7 @@ services:
   # ---------------------------------------------------------------------------
   # AIDER — AI Coding Agent (CLI)
   # Uses AIO Sandbox's shared workspace so changes are visible in VSCode + browser
-  # Access: docker exec -it aider aider --model ollama/qwen3-coder:7b-q4_K_M
+  # Access: docker exec -it aider aider --model ollama/qwen2.5-coder:7b-instruct-q4_K_M
   # ---------------------------------------------------------------------------
   aider:
     image: paulgauthier/aider:latest
@@ -187,7 +189,7 @@ services:
     working_dir: /workspace
     environment:
       - OLLAMA_API_BASE=http://ollama:11434
-      - AIDER_MODEL=ollama/qwen3-coder:7b-q4_K_M
+      - AIDER_MODEL=ollama/qwen2.5-coder:7b-instruct-q4_K_M
       - AIDER_DARK_MODE=true
       - AIDER_STREAM=true
     stdin_open: true

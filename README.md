@@ -133,18 +133,18 @@ User response
 
 ## Sequence order
 
-| Phase | Action | Where |
-|---|---|---|
-| Phase 1 | Core stack up and healthy | [Service Map](#service-map) |
-| During Phase 1 | Portainer setup must be done within 5 minutes of first start | Browser :9443 |
-| Phase 2 | Pull Ollama models (while core is running | [Pull models](#2-pull-recommended-ollama-models) |
-| Phase 3 | Configure Open WebUI RAG (one-time, core must be running | Browser :3000 |
+| Phase | Action | Details | Where |
+|---|---|---|---|
+| Phase 1 | Core stack up and healthy | [Start core stack](#2-start-core-stack) | [Service Map](#service-map) |
+| During Phase 1 | Portainer setup must be done within 5 minutes of first start | [Portainer setup](#portainer) | http://localhost:9443 |
+| Phase 2 | Pull Ollama models (while core is running | [Pull models](#3-pull-recommended-ollama-models) |  |
+| Phase 3 | Configure Open WebUI RAG (one-time, core must be running | [WebUI RAG](#4-configure-rag-chunking-in-open-webui) | http://localhost:3000 |
 | Phase 4 | Start agents stack | [Start agents stack](#5-add-optional-layers) |
-| During Phase 4 | Vale-MCP setup where agents must be running | AIO Sandbox terminal at :8090 |
-| Phase 5 | Start automation stack |  |
-| Phase 6 | Start guardrails stack - *Note:* First run builds NeMo from source — allow ~10 minutes. Verify! | Mounted Config files |
-| Phase 7 | TruLens setup (agents must be running) |  AIO Sandbox terminal at :8090 |
-| Phase 8 | QWED setup (agents must be running) |  AIO Sandbox terminal at :8090 |
+| During Phase 4 | Vale-MCP setup where agents must be running | [Vale-MCP setup](#vale-mcp-setup-in-aio-sandbox) | Install inside AIO Sandbox terminal (http://localhost:8090) |
+| Phase 5 | Start automation stack | [Start Automation stack](#5-add-optional-layers) |
+| Phase 6 | Start guardrails stack - *Note:* First run builds NeMo from source — allow ~10 minutes. Verify! |  [Start guardrails stack](#5-add-optional-layers) | Mounted Config files |
+| Phase 7 | TruLens setup (agents must be running) | [TruLens setup](#trulens-setup-in-aio-sandbox) | Setup inside AIO Sandbox terminal (http://localhost:8090) |
+| Phase 8 | QWED setup (agents must be running) |  [QWED setup](#qwed-verification-setup-in-aio-sandbox) | Setup inside AIO Sandbox terminal (http://localhost:8090) |
 | Phase 9 | DeerFlow (everything above should be running first) | [DeerFlow Setup](#deerflow-setup) |
 | Phase 10 | UI Extras (optional, pick one - LobeChat or AnythingLLM, any time after core) | [UI extras](#ui-extras) |
 
@@ -218,44 +218,45 @@ docker compose up -d
 ### 3. Pull recommended Ollama models 
 **(first time only)**
 
-> **Start Ollama first**
+**Start Ollama first**
 ```
 docker compose up -d ollama
 ```
 
-> **Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
+**Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
 ```
 docker exec ollama ollama pull bge-m3
 ```
 
-> **General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
+**General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
 ```
 docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality
 ```
 
-> **Best general chat for 16GB RAM laptops (~4.5-5GB)**
+**Best general chat for 16GB RAM laptops (~4.5-5GB)**
 ```
 docker exec ollama ollama pull qwen3:4b-q4_K_M
 ```
 
-> **Best coding model for CPU (~4.5-5GB)**
+**Best coding model for CPU (~4.5-5GB)**
 ```
-docker exec ollama ollama pull qwen3-coder:7b-q4_K_M
+docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
 ```
 
-> **Fast small general + reasoning / guardrail judge model) (~2-3GB)**
+**Fast small general + reasoning / guardrail judge model) (~2-3GB)**
 ```
-docker exec ollama ollama pull phi4-mini:q4_K_M 
+docker exec ollama ollama pull phi4-mini:3.8b-q4_K_M
 ```
 **or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents**
 
-> **Optional: vision / multimodal (~4–6 GB)**
+**Optional: vision / multimodal (~4–6 GB)**
 ```
 docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available
 ```
 ---
 
-### 4. Configure RAG chunking in Open WebUI (one-time setup)
+### 4. Configure RAG chunking in Open WebUI 
+**(one-time setup)**
 After core is running, go to **http://localhost:3000**:
 1. Admin Panel → Settings → Documents
 2. Set **Content Extraction Engine** → `Docling` → URL: `http://docling:5001`
@@ -267,36 +268,35 @@ After core is running, go to **http://localhost:3000**:
 8. Set **Top K** → `8`
 9. Save
 
-These settings are pre-configured via environment variables as defaults,
-but confirming them in the UI ensures they're applied correctly.
+These settings are pre-configured via environment variables as defaults, but confirming them in the UI ensures they're applied correctly.
 
-BGE-M3 supports an 8192-token context window — far larger than mxbai-embed-large's 512-token limit. Larger chunks preserve more context per passage and improve retrieval coherence on long technical documents.
+BGE-M3 supports an 8192-token context window. Larger chunks preserve more context per passage and improve retrieval coherence on long technical documents.
 
 ---
 
 ### 5. Add optional layers
 
-> **Agents**
+**Agents**
 ```powershell
 docker compose -f docker-compose.yml -f compose/agents.yml up -d
 ```
 
-> **Automation**
+**Automation**
 ```powershell
 docker compose -f docker-compose.yml -f compose/automation.yml up -d
 ```
 
-> **Guardrails**
+**Guardrails**
 ```powershell
 docker compose -f docker-compose.yml -f compose/guardrails.yml up -d
 ```
 
-> **First run builds NeMo Guardrails from source (~10 minutes). Verify it started:**
+**First run builds NeMo Guardrails from source (~10 minutes). Verify it started:**
 ```powershell
 curl http://localhost:8010/health
 ```
 
-> **UI extra -- pick one**
+**UI extra -- pick one**
 
 **LobeChat (recommended if you want MCP + multi-model)**
 ```
@@ -424,48 +424,64 @@ cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
 ```
 
 ---
-## Vale-MCP Setup in AIO Sandbox (one-time)
-Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only).
-After starting the agents stack, open the terminal at http://localhost:8090:
-1. Install Vale CLI (Linux binary)
+
+## Vale-MCP Setup in AIO Sandbox 
+**(one-time)**
+* Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only).
+* Vale linter config and styles are mounted from `D:\hotlanta_git\vale_linter\` (read-only).
+
+After starting the agents stack, open a terminal inside the aio sandbox container:
+```powershell
+docker exec -it aio-sandbox bash
 ```
-wget -q https://github.com/errata-ai/vale/releases/latest/download/vale_Linux_64-bit.tar.gz
-tar -xzf vale_Linux_64-bit.tar.gz && mv vale /usr/local/bin/ && rm vale_Linux_64-bit.tar.gz
+
+### 1. Install Vale CLI (Linux binary)
+Vale downloads with a version number in the filename — check `/home/gem/` first:
+```bash
+ls /home/gem/vale*.tar.gz
+```
+Then extract using the actual filename (replace version number as needed):
+```bash
+tar -xzf vale_3.14.1_Linux_64-bit.tar.gz
+mkdir -p /home/gem/bin
+mv vale /home/gem/bin/
+echo 'export PATH=$PATH:/home/gem/bin' >> /home/gem/.bashrc
+source /home/gem/.bashrc
 vale --version
 ```
 
-2. Copy source from read-only mount to writable workspace
+### 2. Copy source from read-only mount to writable workspace
 ```
 cp -r /home/gem/vale-mcp-src /home/gem/vale-mcp
 ```
 
-3. Rebuild node_modules for Linux (Windows binaries won't run in the container)
+### 3. Rebuild node_modules for Linux (Windows binaries won't run in the container)
 ```
 cd /home/gem/vale-mcp && npm install && npm run build
 ```
 
-4. Create Vale config for technical documentation
-```
-cat > /home/gem/.vale.ini << 'EOF'
-StylesPath = /home/gem/.vale/styles
-MinAlertLevel = suggestion
-[*.md]
-BasedOnStyles = Vale, Microsoft, write-good
-EOF
+### 4. Copy Vale config and fix the StylesPath
+Copy your existing `.vale.ini` then update the hardcoded Windows path to the Linux path:
+```bash
+cp /home/gem/vale-linter-src/.vale.ini /home/gem/.vale.ini
+sed -i 's|StylesPath = .*|StylesPath = /home/gem/.vale/styles|' /home/gem/.vale.ini
+cat /home/gem/.vale.ini
 ```
 
-5. Download Vale styles (one-time, requires internet)
+### 5. Copy your existing Vale styles (one-time)
 ```
-vale sync
+mkdir -p /home/gem/.vale/styles
+cp -r /home/gem/vale-linter-src/styles/. /home/gem/.vale/styles/
 ```
 
-6. Verify
+### 6. Verify
 ```
+vale --version
 echo "This is a very unique sentence you should utilize." | vale --ext=.md
 ```
 
 Vale persists in aio-workspace — no reinstall needed after container restarts.
-To update Vale-MCP after a git pull on Windows:
+**To update Vale-MCP after a git pull on Windows:**
 ```
 cp -r /home/gem/vale-mcp-src/. /home/gem/vale-mcp/ && cd /home/gem/vale-mcp && npm install && npm run build
 ```
@@ -473,7 +489,8 @@ cp -r /home/gem/vale-mcp-src/. /home/gem/vale-mcp/ && cd /home/gem/vale-mcp && n
 
 ---
 
-## TruLens Setup in AIO Sandbox (one-time)
+## TruLens Setup in AIO Sandbox 
+**(one-time)**
 
 TruLens evaluates your RAG pipeline using the RAG Triad — three scores that
 together confirm a response is grounded and not hallucinated:
@@ -502,7 +519,8 @@ All scores are logged to Langfuse at **http://localhost:3020** for trend trackin
 
 ---
 
-## QWED Verification Setup in AIO Sandbox (one-time)
+## QWED Verification Setup in AIO Sandbox
+**(one-time)**
 
 QWED provides deterministic verification for structured outputs — math, SQL,
 code, and logic. Unlike neural guardrails, it uses symbolic solvers that
@@ -587,10 +605,10 @@ macOS: Swap is automatic.
 | Use Case | Model | Disk | RAM |
 |---|---|---|---|
 | Embeddings (technical docs) | `bge-m3` | ~670 MB | ~1.2 GB |
-| Fast chat / guardrail judge | `phi4-mini:q4_K_M` | ~2.5 GB | ~3 GB |
+| Fast chat / guardrail judge | `phi4-mini:3.8b-q4_K_M` | ~2.5 GB | ~3 GB |
 | Best 8B chat | `qwen3.1:7b-q4_K_M` | ~2-3 GB | ~3-4 GB |
 | Best 16B chat | `qwen3:4b-q4_K_M` | ~4.7 GB | ~5-6 GB |
-| Best coding | `qwen3-coder:7b-q4_K_M` | ~4.7 GB | ~5-6 GB |
+| Best coding model for CPU| `qwen2.5-coder:7b-instruct-q4_K_M` | ~4.7 GB | ~5-6 GB |
 | Vision / multimodal | `llava:7b` or newer Qwen_VL variant | ~4-6 GB | ~5-7 GB |
 
 ### Why Qwen3 instead of Qwen2.5?
@@ -667,6 +685,12 @@ Before running on any network (even local):
 - [ ] Change secret_key in config/searxng/settings.yml
 - [ ] Change `LANGFUSE_SECRET_KEY` in `compose/guardrails.yml`
 
+**Note**
+
+These two files can be used to set the secret keys automatically:
+`update_secrets.py`
+`update_secrets.bat`
+
 ---
 
 ## Useful Commands
@@ -698,7 +722,7 @@ name                              size       modified_at
 ----                              ----       -----------
 qwen3:4b-q4_K_M                   2541748...  2026-03-10...
 bge-m3:latest                     567743...   2026-03-10...
-phi4-mini:q4_K_M                  2487234...  2026-03-10...
+phi4-mini:3.8b-q4_K_M                  2487234...  2026-03-10...
 ```
 
 #### Pull a new model
@@ -881,3 +905,26 @@ docker pull portainer/portainer-ce:latest && docker compose restart portainer
 | 9000 | Portainer HTTP | ai-stack core |
 | 9443 | Portainer HTTPS | ai-stack core |
 | 11434 | Ollama API | ai-stack core |
+
+---
+
+## Troubleshooting
+
+### Healthcheck failures on startup
+
+Ollama and Qdrant use minimal base images that include neither `curl` nor `wget`,
+so healthcheck commands fail even when the services are running correctly.
+Both are configured with `healthcheck: disable: true` in `docker-compose.yml`.
+`open-webui` depends on both with `condition: service_started` rather than
+`condition: service_healthy` for the same reason.
+
+Docling is the exception — it includes `curl` and its healthcheck works correctly.
+It uses `condition: service_healthy` and has a 60s `start_period` to allow time
+for ML model download on first run.
+
+If containers report unhealthy on first start, run:
+```powershell
+docker compose up -d --force-recreate ollama qdrant
+docker compose up -d
+```
+This is usually a race condition during initial startup — a second `up` resolves it.

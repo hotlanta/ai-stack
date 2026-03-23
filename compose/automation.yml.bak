@@ -16,7 +16,6 @@ name: local-ai-core
 networks:
   ai-net:
     external: true
-    name: local-ai-core_ai-net
 
 volumes:
   n8n-data:
@@ -116,7 +115,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://langfuse:langfuse-secret@langfuse-db:5432/langfuse
       - NEXTAUTH_URL=http://localhost:3020
-      - $108066f4d8b04b8dc3d6ed38d3915c9b1036d4566fac9c3a375608d8059d2a424a611f99c8c6f99b0d99f4bfc62964e88d5ded0f3f81df87bd940cf43d7c97e0b
+      - NEXTAUTH_SECRET=change-me-langfuse-nextauth-secret
       - SALT=change-me-langfuse-salt
       # Self-hosted: disable telemetry
       - TELEMETRY_ENABLED=false

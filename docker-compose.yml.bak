@@ -24,12 +24,12 @@
 #   Swap: enable 4GB+ swap on host — strongly recommended
 #
 # Recommended models (pull after stack is up):
-#   ollama pull bge-m3                              # embeddings (best for technical docs)
-#   ollama pull qwen2.5-coder:7b-instruct-q4_K_M    # coding
-#   ollama pull phi4-mini:3.8b-q4_K_M               # general/fast
-#   ollama pull qwen3:1.7b-q4_K_M                   # lightweight chat (8GB RAM laptops)
-#   ollama pull qwen3:4b-q4_K_M                     # best general (16GB RAM laptops)
-#   ollama pull llava:7b                            # vision / multimodal
+#   ollama pull bge-m3                   # embeddings (best for technical docs)
+#   ollama pull qwen3-coder:7b-q4_K_M    # coding
+#   ollama pull phi4-mini:q4_K_M         # general/fast
+#   ollama pull qwen3:1.7b-q4_K_M        # lightweight chat (8GB RAM laptops)
+#   ollama pull qwen3:4b-q4_K_M          # best general (16GB RAM laptops)
+#   ollama pull llava:7b                 # vision / multimodal
 #
 # RAG / Chunking strategy for large technical docs:
 #   - Embedding model:  bge-m3 (8192-token ctx, sparse+dense retrieval, MIT license
@@ -86,7 +86,11 @@ services:
           memory: 4G
     shm_size: '2gb'
     healthcheck:
-      disable: true
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # QDRANT — Vector Database
@@ -115,7 +119,10 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      disable: true
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   # ---------------------------------------------------------------------------
   # OPEN WEBUI — Primary Chat UI + RAG
@@ -188,9 +195,9 @@ services:
 
     depends_on:
       ollama:
-        condition: service_started
+        condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       docling:
         condition: service_healthy
       searxng:
@@ -269,7 +276,7 @@ services:
       - ai-net
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080
-      - $13a52ff0cf374c89c989f8d6d35a3106ecf79f4ee8888c9bb19851865acf217fc
+      - SEARXNG_SECRET_KEY=change-me-searxng-secret
     restart: unless-stopped
     deploy:
       resources:

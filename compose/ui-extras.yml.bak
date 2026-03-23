@@ -19,7 +19,6 @@ name: local-ai-core
 networks:
   ai-net:
     external: true
-    name: local-ai-core_ai-net
 
 volumes:
   lobechat-db:
@@ -113,7 +112,7 @@ services:
       - ai-net
     environment:
       - STORAGE_DIR=/app/server/storage
-      - $15be35973a39f03d128ef1b80b7231889adef54b54b70499f23bb5fef494d48e03173a83d45ec01263d2aed212140409e94133f2fb22e0c6c68dc7cdbaa616005
+      - JWT_SECRET=change-me-anythingllm-jwt-secret
       # LLM: local Ollama — qwen3:4b matches Qwen2.5-7B quality at half the RAM
       - LLM_PROVIDER=ollama
       - OLLAMA_BASE_PATH=http://ollama:11434
