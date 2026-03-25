@@ -17,7 +17,6 @@ No GPU required. No cloud APIs. No data leaving your machine.
 - [QWED Verification](#qwed-verification)
 - [NeMo Guardrails Configuration](#nemo-guardrails-configuration)
 - [RAM Budget Guide](#ram-budget-guide)
-- [Model Selection Guide](#model-selection-guide)
 - [Technology Decisions](#technology-decisions)
 - [Security Checklist](#security-checklist)
 - [Useful Commands](#useful-commands)
@@ -230,7 +229,7 @@ docker pull mintplexlabs/anythingllm:latest
 ### 2. Start core stack
 
 **One-click full stack (after first-time setup):**
-### 6. Full stack (everything)
+#### Full stack (everything)
 ```powershell
 docker compose \
   -f docker-compose.yml \
@@ -264,14 +263,30 @@ docker compose up -d
 docker compose up -d ollama
 ```
 
-| Command | Description |
-|---------|-------------|
-| `docker exec ollama ollama pull bge-m3` | **Embeddings — bge-m3** (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval |
-| `docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality` | **General chat** (fast, ~2.3-3GB) — good for 8GB RAM laptops |
-| `docker exec ollama ollama pull qwen3:4b-q4_K_M` | **Best general chat** for 16GB RAM laptops (~4.5-5GB) |
-| `docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M` | **Best coding model for CPU** (~4.5-5GB) |
-| `docker exec ollama ollama pull phi4-mini:3.8b-q4_K_M` | **Fast small general + reasoning / guardrail judge model** (~2-3GB) **or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents** |
-| `docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available` | **Optional: vision / multimodal** (~4–6 GB) |
+**Model Selection Guide**
+
+| Use Case                          | Pull Command                                              | Model Tag                     | Disk      | RAM      | Key Features |
+|-----------------------------------|-----------------------------------------------------------|-------------------------------|-----------|----------|--------------|
+| **Embeddings** (technical docs)   | `docker exec ollama ollama pull bge-m3`                   | `bge-m3`                      | ~670 MB   | ~1.2 GB  | 8192-token context, sparse + dense retrieval, MIT license |
+| **General chat** (8 GB laptops)   | `docker exec ollama ollama pull qwen3:1.7b-q4_K_M`        | `qwen3:1.7b-q4_K_M`           | ~2.3 GB   | ~3 GB    | Fast responses |
+| **Best general chat** (16 GB)     | `docker exec ollama ollama pull qwen3:4b-q4_K_M`          | `qwen3:4b-q4_K_M`             | ~4.7 GB   | ~5–6 GB  | Excellent balance of speed & quality |
+| **Best coding model**             | `docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M`    | `qwen2.5-coder:7b-instruct-q4_K_M`       | ~4.7 GB   | ~4.55–5 GB  | Optimized for code generation |
+| **Fast judge / guardrail**        | `docker exec ollama ollama pull phi4-mini:q4_K_M`         | `phi4-mini:q4_K_M`            | ~2.5 GB   | ~3 GB    | Very fast reasoning & evaluation |
+| **Vision / multimodal** (optional)| `docker exec ollama ollama pull llava:7b`                 | `llava:7b`                    | ~4–6 GB   | ~5–7 GB  | Image understanding, diagrams, screenshots |
+
+> **Tip:** You can replace `qwen3:1.7b-q4_K_M` with `qwen3:4b-q4_K_M` if you have 16 GB+ RAM for noticeably better quality.
+
+### Why Qwen3 instead of Qwen2.5?
+> Qwen3-4B matches Qwen2.5-7B quality at half the RAM. Qwen3 also supports on-demand thinking mode — add /think to any prompt in Open WebUI for chain-of-thought on complex queries, /no_think for fast responses.
+
+### Embedding note, why BGE-M3:
+> BGE-M3 supports an 8192-token context window vs mxbai's 512-token limit, enabling 800-token chunks that preserve more context per retrieved passage. It also supports sparse+dense retrieval simultaneously — sparse catches exact technical terms (model numbers, part codes, version strings) that dense embeddings often miss. MIT licensed, ~568MB.
+
+### What can llava:7b do?
+> LLaVA (Large Language and Vision Assistant) adds image understanding to your local stack. Use cases for technical documentation work: ask questions about diagrams, schematics, and screenshots directly in Open WebUI; have DeerFlow agents analyse images found during web browsing; describe circuit diagrams or UI screenshots; extract text from images of scanned documents that Docling cannot OCR. Select llava:7b as the model in Open WebUI when uploading images. Note: LLaVA and a text model cannot both be loaded in RAM simultaneously on a CPU-only laptop — Ollama will swap them automatically but expect a ~30s pause.
+
+### Why not Claude Code / Grok / GPT-4?
+> API-only models — no local weights available. They require sending data to cloud APIs, which breaks the local/private model. For hybrid workflows, add LiteLLM as a gateway to mix local and cloud models behind a single API endpoint.
 
 ---
 
@@ -700,35 +715,6 @@ Run wsl --shutdown then restart Docker Desktop.
 Linux: sudo fallocate -l 4G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
 macOS: Swap is automatic.
 
-
----
-
-## Model Selection Guide
-
-| Use Case | Model | Disk | RAM |
-|---|---|---|---|
-| Embeddings (technical docs) | `bge-m3` | ~670 MB | ~1.2 GB |
-| Fast chat / guardrail judge | `phi4-mini:3.8b-q4_K_M` | ~2.5 GB | ~3 GB |
-| Best 8B chat | `qwen3.1:7b-q4_K_M` | ~2-3 GB | ~3-4 GB |
-| Best 16B chat | `qwen3:4b-q4_K_M` | ~4.7 GB | ~5-6 GB |
-| Best coding model for CPU| `qwen2.5-coder:7b-instruct-q4_K_M` | ~4.7 GB | ~5-6 GB |
-| Vision / multimodal | `llava:7b` or newer Qwen_VL variant | ~4-6 GB | ~5-7 GB |
-
-### Why Qwen3 instead of Qwen2.5?
-> Qwen3-4B matches Qwen2.5-7B quality at half the RAM. Qwen3 also supports
-on-demand thinking mode — add /think to any prompt in Open WebUI for
-chain-of-thought on complex queries, /no_think for fast responses.
-
-### Embedding note, why BGE-M3:
-> BGE-M3 supports an 8192-token context window vs mxbai's 512-token limit,
-enabling 800-token chunks that preserve more context per retrieved passage. It also supports sparse+dense retrieval simultaneously — sparse catches exact technical terms (model numbers, part codes, version strings) that dense embeddings often miss. MIT licensed, ~568MB.
-
-### What can llava:7b do?
-> LLaVA (Large Language and Vision Assistant) adds image understanding to your local stack. Use cases for technical documentation work: ask questions about diagrams, schematics, and screenshots directly in Open WebUI; have DeerFlow agents analyse images found during web browsing; describe circuit diagrams or UI screenshots; extract text from images of scanned documents that Docling cannot OCR. Select llava:7b as the model in Open WebUI when uploading images. Note: LLaVA and a text model cannot both be loaded in RAM simultaneously on a CPU-only laptop — Ollama will swap them automatically but expect a ~30s pause.
-
-### Why not Claude Code / Grok / GPT-4?
-> API-only models — no local weights available. They require sending data to cloud APIs, which breaks the local/private model. For hybrid workflows, add LiteLLM as a gateway to mix local and cloud models behind a single API endpoint.
-
 ---
 
 ## Technology Decisions
@@ -1058,8 +1044,10 @@ Connect to QWED Gateway as a second Ollama connection for math/SQL/code queries
 **Where and how to use it**
 
 Vale-MCP is a writing linter, not a chat tool. You don't use it through Open WebUI. There are two ways to use it:
+
 **Option 1**
-Directly in the AIO Sandbox terminal (simplest):
+
+**Directly in the AIO Sandbox terminal (simplest):**
 ```bash
 docker exec -it aio-sandbox bash
 echo "This is a very unique sentence." | vale --ext=.md
@@ -1068,7 +1056,8 @@ vale /home/gem/some-document.md
 ```
 
 **Option 2**
-As an MCP tool in LobeChat or a DeerFlow agent:**
+
+**As an MCP tool in LobeChat or a DeerFlow agent:**
 LobeChat has proper MCP plugin support. In LobeChat go to **Settings → MCP Servers** and add:
 ```
 http://localhost:8090/mcp
@@ -1083,7 +1072,7 @@ mcp_servers:
 
 Then an agent can invoke Vale by asking it to "check this document for writing issues using Vale."
 
-## #QWED MCP server — connecting LobeChat and DeerFlow
+### QWED MCP server — connecting LobeChat and DeerFlow
 The QWED MCP server runs inside AIO Sandbox on port 8091. Start it first:
 ```
 bash
