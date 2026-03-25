@@ -1,0 +1,9 @@
+fastapi
+requests
+sqlglot
+sympy
+uvicorn
+pydantic
+pydantic-settings
+z3-solver==4.13.0.0
+pandera

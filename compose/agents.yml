@@ -199,3 +199,21 @@ services:
       resources:
         limits:
           memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # QWED GATEWAY — Python FastAPI wrapper for Ollama (dynamic models)
+  # Exposes: http://qwed-gateway:8001/chat
+  # ---------------------------------------------------------------------------
+  qwed-gateway:
+    build:
+      context: ./gateway       # relative to agents.yml
+      dockerfile: Dockerfile
+    container_name: qwed-gateway
+    ports:
+      - "8001:8001"
+    networks:
+      - ai-net
+    environment:
+      OLLAMA_URL: "http://ollama:11434/api/generate"
+      DEFAULT_MODEL: "qwen3:4b-q4_K_M"
+    restart: unless-stopped

@@ -1,7 +1,29 @@
 # 🧠 Local AI Lab — CPU-Only Stack (2026)
 
-A modular, privacy-first AI stack that runs entirely on a CPU laptop.
+A modular, privacy-first AI stack that runs entirely on a CPU laptop and can be run offline.
 No GPU required. No cloud APIs. No data leaving your machine.
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Service Map](#service-map)
+- [How Guardrails Work](#how-guardrails-work-together)
+- [Installation Steps](#installation-steps)
+- [DeerFlow Setup](#deerflow-setup)
+- [Vale-MCP Setup](#vale-mcp-setup-in-aio-sandbox)
+- [TruLens Setup](#trulens-setup-in-aio-sandbox)
+- [QWED Verification](#qwed-verification)
+- [NeMo Guardrails Configuration](#nemo-guardrails-configuration)
+- [RAM Budget Guide](#ram-budget-guide)
+- [Model Selection Guide](#model-selection-guide)
+- [Technology Decisions](#technology-decisions)
+- [Security Checklist](#security-checklist)
+- [Useful Commands](#useful-commands)
+- [Ports Reference](#ports-reference)
+- [Troubleshooting](#troubleshooting)
+- [How to Use the AI Stack](#how-to-use-the-ai-stack)
 
 ---
 
@@ -27,6 +49,14 @@ D:\hotlanta_git\
 │   │   └── nemo-guardrails\
 │   │       ├── Dockerfile                # builds NeMo from source
 │   │       └── server.py                 # FastAPI wrapper with OpenAI-compatible API
+│   ├── gateway\                          # QWED verification gateway
+│   │   ├── Dockerfile                    # builds gateway from source
+│   │   ├── gateway.py                    # FastAPI wrapper — Ollama + QWED verification
+│   │   ├── qwed_verify.py                # SymPy, Z3, SQLGlot, AST engines
+│   │   ├── qwed_tool.py                  # one-line import helper for agents
+│   │   ├── mcp_qwed.py                   # MCP tool definition
+│   │   ├── qwed_mcp_server.py            # MCP server wrapper
+│   │   └── requirements.txt              # fastapi, uvicorn, sympy, z3-solver, sqlglot, pandera
 │   ├── config\                         # All service config files (mounted read-only)
 │   │   ├── searxng\
 │   │   │   └── settings.yml            # SearXNG engine + format config
@@ -46,20 +76,21 @@ D:\hotlanta_git\
 │       ├── portainer-data\
 │       └── aio-workspace\             # Shared: AIO Sandbox + Aider filesystem + Vale-MCP + TruLens + QWED
 │
-└── hotlanta_git\
-    └── deer-flow\                      # DeerFlow repo (cloned separately, runs standalone)
-        ├── config.yaml                 # DeerFlow LLM + sandbox + tools config
-        ├── .env                        # DeerFlow environment variables
-        ├── docker-compose.yml          # DeerFlow's own compose (run separately)
-        │   ├── skills\
-        │   │   └── visualise\                 # Visualise skill (git cloned)
-        ├── backend\
-        │   └── src\
-        │       └── community\
-        │           └── searxng\        # ← YOUR CUSTOM SEARXNG WRAPPER
-        │               ├── __init__.py
-        │               └── tools.py
-        └── Vale-MCP\                    # Vale-MCP repo — mounted into AIO Sandbox
+│   ├── deer-flow\                      # DeerFlow repo (cloned separately, runs standalone)
+│   │   ├── config.yaml                 # DeerFlow LLM + sandbox + tools config
+│   │   ├── .env                        # DeerFlow environment variables
+│   │   ├── docker
+│   │   │   └──docker-compose-dev.yml   # DeerFlow's own compose (run separately)
+│   │   ├──  skills\
+│   │   │   └── visualise\              # Visualise skill (git cloned)
+│   │   ├── backend\
+│   │   │   └── src\
+│   │   │       └── community\
+│   │   │           └── searxng\        # ← YOUR CUSTOM SEARXNG WRAPPER
+│   │   │               ├── __init__.py
+│   │   │               └── tools.py
+│   ├── Vale-MCP\                       # Vale-MCP repo — mounted into AIO Sandbox
+│   └── vale_linter\                    # Vale files such as config file and styles — mounted into AIO Sandbox
 ```
 
 ---
@@ -82,6 +113,7 @@ D:\hotlanta_git\
 | AIO Sandbox | Browser+VNC, VSCode, Shell, Jupyter, MCP Hub | http://localhost:8090 |
 | Aider | AI coding agent (CLI) | `docker exec -it aider bash` |
 | DeerFlow | Multi-agent research — runs standalone | http://localhost:2026 |
+| QWED Gateway | Ollama proxy + deterministic output verification | http://localhost:8001
 
 ### Automation (optional)
 | Service | Purpose | URL |
@@ -95,7 +127,7 @@ D:\hotlanta_git\
 |---------|---------|-----|
 | NeMo Guardrails | Input/output rails + RAG fact-checking | http://localhost:8010 |
 | TruLens | RAG triad evaluation (runs in AIO Sandbox) | Jupyter at http://localhost:8090 |
-| QWED | Deterministic math/SQL/code verification (runs in AIO Sandbox) | — |
+| QWED | Deterministic math/SQL/code verification (runs in AIO Sandbox) | Gateway + MCP tool |
 
 ### UI Extras (optional, pick one)
 | Service | Purpose | URL |
@@ -131,39 +163,36 @@ User response
 
 ---
 
-## Sequence order
+## Installation Steps
 
-| Phase | Action | Details | Where |
-|---|---|---|---|
-| Phase 1 | Core stack up and healthy | [Start core stack](#2-start-core-stack) | [Service Map](#service-map) |
-| During Phase 1 | Portainer setup must be done within 5 minutes of first start | [Portainer setup](#portainer) | http://localhost:9443 |
-| Phase 2 | Pull Ollama models (while core is running | [Pull models](#3-pull-recommended-ollama-models) |  |
-| Phase 3 | Configure Open WebUI RAG (one-time, core must be running | [WebUI RAG](#4-configure-rag-chunking-in-open-webui) | http://localhost:3000 |
-| Phase 4 | Start agents stack | [Start agents stack](#5-add-optional-layers) |
-| During Phase 4 | Vale-MCP setup where agents must be running | [Vale-MCP setup](#vale-mcp-setup-in-aio-sandbox) | Install inside AIO Sandbox terminal (http://localhost:8090) |
-| Phase 5 | Start automation stack | [Start Automation stack](#5-add-optional-layers) |
-| Phase 6 | Start guardrails stack - *Note:* First run builds NeMo from source — allow ~10 minutes. Verify! |  [Start guardrails stack](#5-add-optional-layers) | Mounted Config files |
-| Phase 7 | TruLens setup (agents must be running) | [TruLens setup](#trulens-setup-in-aio-sandbox) | Setup inside AIO Sandbox terminal (http://localhost:8090) |
-| Phase 8 | QWED setup (agents must be running) |  [QWED setup](#qwed-verification-setup-in-aio-sandbox) | Setup inside AIO Sandbox terminal (http://localhost:8090) |
-| Phase 9 | DeerFlow (everything above should be running first) | [DeerFlow Setup](#deerflow-setup) |
-| Phase 10 | UI Extras (optional, pick one - LobeChat or AnythingLLM, any time after core) | [UI extras](#ui-extras) |
+**First-time total time estimate:** 25–40 minutes (including model downloads and first builds).
+
+| Step | Action 
+|---|---|
+| 1 | [Pull required Docker images](#1-pull-required-docker-images) |
+| 2 | Review [Security Checklist](#security-checklist) |
+| 3 | [Start core stack](#2-start-core-stack) | 
+| 4 | [Set up Portainer](#portainer) - Portainer setup must be done within 5 minutes of first start | 
+| 5 | [Pull Ollama models](#3-pull-recommended-ollama-models) (while core is running) |
+| 6 | [Configure Open WebUI RAG](#4-configure-rag-chunking-in-open-webui) (one-time, core must be running) |
+| 7 | Add optional layers [Agents stack](#5-add-optional-layers) / [Automation stack](#5-add-optional-layers) / [Guardrails stack](#5-add-optional-layers) |
+| 8 | [Set up Vale-MCP](#vale-mcp-setup-in-aio-sandbox) -- Install inside AIO Sandbox terminal |
+| 9 | [Set up TruLens](#trulens-setup-in-aio-sandbox) (agents must be running) |
+| 10 | [Set up QWED in AIO Sandbox](#qwed-verification-setup-in-aio-sandbox) (agents must be running) |
+| 11 | Create [QWED Gateway](#qwed-gateway) |
+| 12 | [Set up DeerFlow](#deerflow-setup) (everything above should be running first) |
+| 13 | [UI extras](#ui-extras) (optional, pick one - LobeChat or AnythingLLM, any time after core) |
 
 ---
 
-## Quick Start
+## Installation
 
-### 1. Pull required Docker images (first time only)
+### 1. Pull required Docker images 
+**(first time only)**
 
 #### Core images
 ```
 docker pull ollama/ollama:latest
-```
-
-> **Start Ollama first**
-```
-docker compose up -d ollama
-```
-```
 docker pull qdrant/qdrant:latest
 docker pull ghcr.io/open-webui/open-webui:main
 docker pull searxng/searxng:latest
@@ -200,7 +229,19 @@ docker pull mintplexlabs/anythingllm:latest
 
 ### 2. Start core stack
 
-Before starting the core stack the first time, review [Security Checklist](#security-checklist).
+**One-click full stack (after first-time setup):**
+### 6. Full stack (everything)
+```powershell
+docker compose \
+  -f docker-compose.yml \
+  -f compose/agents.yml \
+  -f compose/automation.yml \
+  -f compose/guardrails.yml `
+  -f compose/ui-extras.yml \
+  up -d
+```
+
+**Before starting the core stack the first time, review [Security Checklist](#security-checklist).**
 
 ```
 cd D:\hotlanta_git\ai-stack
@@ -223,36 +264,15 @@ docker compose up -d
 docker compose up -d ollama
 ```
 
-**Embeddings — bge-m3 (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval**
-```
-docker exec ollama ollama pull bge-m3
-```
+| Command | Description |
+|---------|-------------|
+| `docker exec ollama ollama pull bge-m3` | **Embeddings — bge-m3** (best for technical docs, ~568MB, MIT license) 8192-token context window, sparse+dense retrieval |
+| `docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality` | **General chat** (fast, ~2.3-3GB) — good for 8GB RAM laptops |
+| `docker exec ollama ollama pull qwen3:4b-q4_K_M` | **Best general chat** for 16GB RAM laptops (~4.5-5GB) |
+| `docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M` | **Best coding model for CPU** (~4.5-5GB) |
+| `docker exec ollama ollama pull phi4-mini:3.8b-q4_K_M` | **Fast small general + reasoning / guardrail judge model** (~2-3GB) **or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents** |
+| `docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available` | **Optional: vision / multimodal** (~4–6 GB) |
 
-**General chat (fast, ~2.3-3GB) — good for 8GB RAM laptops**
-```
-docker exec ollama ollama pull qwen3:1.7b-q4_K_M   # or qwen3:4b-q4_K_M for better quality
-```
-
-**Best general chat for 16GB RAM laptops (~4.5-5GB)**
-```
-docker exec ollama ollama pull qwen3:4b-q4_K_M
-```
-
-**Best coding model for CPU (~4.5-5GB)**
-```
-docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
-```
-
-**Fast small general + reasoning / guardrail judge model) (~2-3GB)**
-```
-docker exec ollama ollama pull phi4-mini:3.8b-q4_K_M
-```
-**or swap to GLM-4.7-Flash / Llama 3.3 8B equivalents**
-
-**Optional: vision / multimodal (~4–6 GB)**
-```
-docker exec ollama ollama pull llava:7b   # or bakllava / qwen3:5:vision variant if available
-```
 ---
 
 ### 4. Configure RAG chunking in Open WebUI 
@@ -296,7 +316,7 @@ docker compose -f docker-compose.yml -f compose/guardrails.yml up -d
 curl http://localhost:8010/health
 ```
 
-**UI extra -- pick one**
+**UI extra pick one**
 
 **LobeChat (recommended if you want MCP + multi-model)**
 ```
@@ -306,19 +326,6 @@ docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lob
 **AnythingLLM (recommended if you do heavy document RAG)**,
 ```
 docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d anythingllm
-```
-
----
-
-### 6. Full stack (everything)
-```powershell
-docker compose \
-  -f docker-compose.yml \
-  -f compose/agents.yml \
-  -f compose/automation.yml \
-  -f compose/guardrails.yml `
-  -f compose/ui-extras.yml \
-  up -d
 ```
 
 ---
@@ -376,7 +383,8 @@ mkdir D:\hotlanta_git\deer-flow\logs
 ```
 10.  Use the correct nginx config for your setup
 The compose file defaults to nginx.conf but the comment says local/AIO mode (which is yours — no Kubernetes) should use nginx.local.conf. Set this in your .env:
-**Open .env and add this line**
+
+**Open .env and add this exact line**
 ```
 NGINX_CONF=nginx.local.conf
 ```
@@ -503,15 +511,34 @@ together confirm a response is grounded and not hallucinated:
 
 Install inside AIO Sandbox terminal (**http://localhost:8090**):
 
+### Copy the install script (it will be in /home/gem/ via aio-workspace volume)
 ```
-# Copy the install script (it will be in /home/gem/ via aio-workspace volume)
 python /home/gem/install_trulens.py
+```
+**Note:** It is simpler to update the install_trulens.py file in Windows and then copy into the aio-workspace.
+```
+docker cp D:\hotlanta_git\ai-stack\install_trulens.py aio-sandbox:/home/gem/install_trulens.py
+```
 
-# Run evaluation on a query
+### Run evaluation on a query
+```
 python /home/gem/trulens_eval.py
+```
+**Note:** This is created by the install_trulens.py scipt. You can verify it's there:
+```
+powershell
+docker exec aio-sandbox ls /home/gem/trulens_eval.py
+```
 
-# View results in Jupyter
-# → http://localhost:8090/jupyter
+And run it:
+```
+powershell
+docker exec -it aio-sandbox python /home/gem/trulens_eval.py
+```
+
+### View results in Jupyter
+```
+http://localhost:8090/jupyter
 ```
 
 Scores above 0.7 are good. Below 0.4 indicates hallucination risk.
@@ -519,12 +546,9 @@ All scores are logged to Langfuse at **http://localhost:3020** for trend trackin
 
 ---
 
-## QWED Verification Setup in AIO Sandbox
-**(one-time)**
+## QWED Verification (Gateway + MCP Tool)
 
-QWED provides deterministic verification for structured outputs — math, SQL,
-code, and logic. Unlike neural guardrails, it uses symbolic solvers that
-mathematically prove correctness. If an output cannot be proven, QWED blocks it.
+QWED provides deterministic verification for structured outputs — math, SQL, code, and logic. Unlike neural guardrails, it uses symbolic solvers that mathematically prove correctness. If an output cannot be proven, QWED blocks it.
 
 | Engine | Verifies | Tool |
 |---|---|---|
@@ -533,6 +557,72 @@ mathematically prove correctness. If an output cannot be proven, QWED blocks it.
 | Code | Syntax, AST validity | Python AST |
 | Logic | Logical statements, implications | Z3 theorem prover |
 | Schema | Data structure conformance | Pandera |
+
+### QWED Gateway 
+**(for Open WebUI / DeerFlow LLM proxy)**
+
+The QWED Gateway is a FastAPI container that sits between your UIs and Ollama,
+automatically verifying structured outputs (math, SQL, code) before they reach the user.
+Freeform text passes through unchanged — verification only activates when QWED
+detects something it can prove or disprove.
+
+#### How it works
+UI / DeerFlow → QWED Gateway :8001 → Ollama :11434
+│
+└→ auto_verify(response)
+├── SQL?    → SQLGlot
+├── Code?   → Python AST
+├── Math?   → SymPy
+└── Other?  → pass through (engine: NONE)
+
+#### Build and start
+
+The gateway builds automatically with the agents stack:
+```powershell
+docker compose -f docker-compose.yml -f compose/agents.yml up -d
+```
+
+Verify it's running:
+```powershell
+curl http://localhost:8001/health
+```
+
+#### Test verification
+```powershell
+# Math — should return verified: true, result: 36.0
+curl -X POST http://localhost:8001/chat `
+  -H "Content-Type: application/json" `
+  -d '{"prompt": "What is 15% of 240?", "model": "qwen3:4b-q4_K_M"}'
+
+# Freeform — returns verified: null, engine: NONE (correct behaviour)
+curl -X POST http://localhost:8001/chat `
+  -H "Content-Type: application/json" `
+  -d '{"prompt": "say hi", "model": "qwen3:4b-q4_K_M"}'
+```
+
+#### Connect Open WebUI to the Gateway
+
+In Open WebUI go to **Admin → Connections → Add Ollama connection** and add:
+http://qwed-gateway:8001
+
+Any model selected on this connection will have its responses automatically verified.
+Keep the direct `http://ollama:11434` connection for chat/summarisation where
+verification adds no value.
+
+#### Connect DeerFlow to the Gateway
+
+In `D:\hotlanta_git\deer-flow\config.yaml`, change `base_url` for coding or
+math agents:
+```yaml
+llm:
+  base_url: "http://host.docker.internal:8001/v1"
+  model: "qwen3:4b-q4_K_M"
+```
+
+Keep the direct Ollama URL for research and summarisation agents.
+
+### QWED Setup in AIO Sandbox
+**(one-time)**
 
 Install inside AIO Sandbox terminal:
 
@@ -552,6 +642,19 @@ result = auto_verify(llm_output)
 if not result["verified"]:
     print("Output could not be verified — treat with caution")
 ```
+
+---
+
+### QWED MCP server (inside AIO Sandbox)
+
+A lightweight MCP tool server also runs on port 8091 inside AIO Sandbox,
+letting DeerFlow agents call QWED as a tool directly:
+```bash
+# Start inside AIO Sandbox terminal
+cd /home/gem && nohup python mcp-qwed.py > mcp-qwed.log 2>&1 &
+```
+
+Add to DeerFlow or LobeChat MCP config: http://aio-sandbox:8091
 
 ---
 
@@ -636,7 +739,8 @@ Three tools covering three different failure modes, none of which overlap:
 - **TruLens** measures RAG quality over time so you can see trends and fix retrieval
 - **QWED** proves math/SQL/code is correct using symbolic solvers — no neural network guessing
 
-TruLens and QWED run inside AIO Sandbox (no extra containers). NeMo adds one container.
+TruLens and QWED MCP server run inside AIO Sandbox (no extra containers). NeMo adds one container.
+QWED Gateway is a FASTAPI container.
 
 ### Why AIO Sandbox instead of separate MCP containers?
 AIO Sandbox replaces four separate MCP containers (filesystem, git, fetch, qdrant)
@@ -791,7 +895,9 @@ cd D:\hotlanta_git\deer-flow && docker compose down
 
 #### Rebuild after config changes
 ```
-cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
+cd D:\hotlanta_git\deer-flow 
+docker compose -f docker/docker-compose-dev.yaml build 
+docker compose -f docker/docker-compose-dev.yaml up -d
 ```
 
 ### Agents
@@ -899,9 +1005,11 @@ docker pull portainer/portainer-ce:latest && docker compose restart portainer
 | 5678 | n8n |
 | 6333 | Qdrant (REST + Dashboard) |
 | 6334 | Qdrant (gRPC) |
+| 8001 | QWED Gateway (Ollama proxy + verification) |
 | 8010 | NeMo Guardrails API | ai-stack guardrails |
 | 8080 | SearXNG |
 | 8090 | AIO Sandbox (Browser/VSCode/Shell/MCP hub) |
+| 8091 | QWED MCP server (runs inside AIO Sandbox) |
 | 9000 | Portainer HTTP | ai-stack core |
 | 9443 | Portainer HTTPS | ai-stack core |
 | 11434 | Ollama API | ai-stack core |
@@ -928,3 +1036,114 @@ docker compose up -d --force-recreate ollama qdrant
 docker compose up -d
 ```
 This is usually a race condition during initial startup — a second `up` resolves it.
+
+## How to use the AI stack
+
+### Open WebUI
+
+Your everyday chat + RAG interface
+This is where you do most of your work. You talk to Ollama models, upload documents for RAG, and can connect to the QWED Gateway as an alternative model endpoint. Vale-MCP is not used here directly — Open WebUI doesn't have a tool-calling interface that connects to external MCP servers.
+
+**What you do here:**
+
+Upload PDFs/docs → they get chunked via Docling → embedded via bge-m3 → stored in Qdrant
+Ask questions — responses are grounded in your uploaded docs
+Switch models (qwen3:4b for chat, llava:7b for images, phi4-mini for fast responses)
+Add /think at the end of any prompt to trigger Qwen3's chain-of-thought mode
+Connect to QWED Gateway as a second Ollama connection for math/SQL/code queries
+
+
+### Vale-MCP
+
+**Where and how to use it**
+
+Vale-MCP is a writing linter, not a chat tool. You don't use it through Open WebUI. There are two ways to use it:
+**Option 1**
+Directly in the AIO Sandbox terminal (simplest):
+```bash
+docker exec -it aio-sandbox bash
+echo "This is a very unique sentence." | vale --ext=.md
+# or lint a file:
+vale /home/gem/some-document.md
+```
+
+**Option 2**
+As an MCP tool in LobeChat or a DeerFlow agent:**
+LobeChat has proper MCP plugin support. In LobeChat go to **Settings → MCP Servers** and add:
+```
+http://localhost:8090/mcp
+```
+
+This connects to AIO Sandbox's unified MCP hub, which exposes Vale as a tool. DeerFlow agents can also call it via the same endpoint in config.yaml:
+```
+yaml
+mcp_servers:
+  - url: "http://host.docker.internal:8090/mcp"
+```
+
+Then an agent can invoke Vale by asking it to "check this document for writing issues using Vale."
+
+## #QWED MCP server — connecting LobeChat and DeerFlow
+The QWED MCP server runs inside AIO Sandbox on port 8091. Start it first:
+```
+bash
+docker exec -it aio-sandbox bash -c "cd /home/gem && nohup python mcp-qwed.py > mcp-qwed.log 2>&1 &"
+```
+
+In LobeChat — go to Settings → MCP Servers, add http://localhost:8091. A tool called qwed_verify will appear. Any agent in LobeChat can then call it — for example ask "calculate compound interest at 5% on $10,000 for 3 years and verify the result."
+
+In DeerFlow — add to config.yaml:
+```
+yaml
+mcp_servers:
+  - url: "http://host.docker.internal:8091"
+    name: "qwed"
+```
+
+DeerFlow agents will then have qwed_verify available as a tool and can call it automatically when generating math, SQL, or code outputs.
+QWED Gateway (:8001) is the simpler option if you just want verification without MCP complexity — point Open WebUI or DeerFlow's LLM base URL at it and all outputs get auto-verified transparently.
+
+### DeerFlow — how to use it and run subagents
+DeerFlow is your deep research tool. Access it at http://localhost:2026.
+The interface has a chat box where you give it a research task. DeerFlow then spins up a pipeline of specialized subagents automatically — you don't configure which agents run, it decides based on your task.
+
+**Example prompts that work well:**
+
+"Research the current state of CPU-optimized LLMs and write a structured report with sources"
+"Find recent papers on RAG evaluation methods and summarise the key techniques"
+"Compare Qdrant vs Weaviate vs Chroma for local CPU deployments"
+
+DeerFlow will automatically use SearXNG for web search, Ollama for reasoning, and the AIO Sandbox for any code execution it needs. You watch it work in the UI — it shows you which agent is running, what it's searching, and what it's writing.
+
+**Subagent tasks you can explicitly request:**
+
+"Search for X, then write a Python script to process the results, then verify the script" — triggers search agent + code agent + verification
+"Find docs about X and create a structured markdown summary" — triggers research agent + writing agent
+
+
+### DeerFlow Skills — the Visualise skill
+Skills extend what DeerFlow agents can produce. The Visualise skill lets agents generate SVG diagrams, HTML charts, and interactive explainers inline in the response.
+
+**Trigger phrases that activate the skill:**
+
+"Show me a diagram of how RAG works"
+"Visualise the architecture of a transformer model"
+"Create a flowchart showing the guardrails pipeline"
+
+DeerFlow recognises these phrases, loads the Visualise skill, and returns an interactive SVG/HTML widget directly in the research output.
+
+### Which UI for what:
+| Task | Where |
+|---------|---------|
+| Chat + document Q&A + RAG | Open WebUI :3000
+| Deep research + multi-agent tasks | DeerFlow :2026
+| Multi-model chat + MCP plugins + Vale | LobeChat :3100
+| Build visual RAG pipelines | Flowise :3030
+| Event-driven automation + webhooks | n8n :5678
+| View LLM traces + TruLens scores | Langfuse :3020
+| Run Vale/QWED/TruLens manually | AIO Sandbox terminal :8090
+| Manage containers + view logs | Portainer :9443
+| QWED Gateway | 
+| QWED MCP Tool | 
+
+The main thing to understand is that Open WebUI is for talking to your documents, DeerFlow is for researching and writing reports, and LobeChat is for multi-tool workflows where you want MCP server integrations like Vale and QWED available as tools the model can call mid-conversation.
