@@ -10,12 +10,7 @@ No GPU required. No cloud APIs. No data leaving your machine.
 - [Architecture](#architecture)
 - [Service Map](#service-map)
 - [How Guardrails Work](#how-guardrails-work-together)
-- [Installation Steps](#installation-steps)
-- [DeerFlow Setup](#deerflow-setup)
-- [Vale-MCP Setup](#vale-mcp-setup-in-aio-sandbox)
-- [TruLens Setup](#trulens-setup-in-aio-sandbox)
-- [QWED Verification](#qwed-verification)
-- [NeMo Guardrails Configuration](#nemo-guardrails-configuration)
+- [Installation](#installation)
 - [RAM Budget Guide](#ram-budget-guide)
 - [Technology Decisions](#technology-decisions)
 - [Security Checklist](#security-checklist)
@@ -162,7 +157,9 @@ User response
 
 ---
 
-## Installation Steps
+## Installation
+
+### Installation Steps
 
 **First-time total time estimate:** 25–40 minutes (including model downloads and first builds).
 
@@ -175,16 +172,14 @@ User response
 | 5 | [Pull Ollama models](#3-pull-recommended-ollama-models) (while core is running) |
 | 6 | [Configure Open WebUI RAG](#4-configure-rag-chunking-in-open-webui) (one-time, core must be running) |
 | 7 | Add optional layers [Agents stack](#5-add-optional-layers) / [Automation stack](#5-add-optional-layers) / [Guardrails stack](#5-add-optional-layers) |
-| 8 | [Set up Vale-MCP](#vale-mcp-setup-in-aio-sandbox) -- Install inside AIO Sandbox terminal |
-| 9 | [Set up TruLens](#trulens-setup-in-aio-sandbox) (agents must be running) |
-| 10 | [Set up QWED in AIO Sandbox](#qwed-verification-setup-in-aio-sandbox) (agents must be running) |
-| 11 | Create [QWED Gateway](#qwed-gateway) |
-| 12 | [Set up DeerFlow](#deerflow-setup) (everything above should be running first) |
-| 13 | [UI extras](#ui-extras) (optional, pick one - LobeChat or AnythingLLM, any time after core) |
+| 8 | [Set up Vale-MCP](#6-vale-mcp-setup-in-aio-sandbox) -- Install inside AIO Sandbox terminal |
+| 9 | [Set up TruLens](#7-trulens-setup-in-aio-sandbox) (agents must be running) |
+| 10 | [QWED Verification (Gateway + MCP Tool)](#qwed) |
+| 11 | [Set up DeerFlow](#9-deerflow-setup) (everything above should be running first) |
+| 12 | [NeMo Guardrails Configuration](#nemo)
+| 13 | [UI extras](#5-add-optional-layers) (optional, pick one - LobeChat or AnythingLLM, any time after core) |
 
 ---
-
-## Installation
 
 ### 1. Pull required Docker images 
 **(first time only)**
@@ -311,144 +306,16 @@ BGE-M3 supports an 8192-token context window. Larger chunks preserve more contex
 
 ### 5. Add optional layers
 
-**Agents**
-```powershell
-docker compose -f docker-compose.yml -f compose/agents.yml up -d
-```
-
-**Automation**
-```powershell
-docker compose -f docker-compose.yml -f compose/automation.yml up -d
-```
-
-**Guardrails**
-```powershell
-docker compose -f docker-compose.yml -f compose/guardrails.yml up -d
-```
-
-**First run builds NeMo Guardrails from source (~10 minutes). Verify it started:**
-```powershell
-curl http://localhost:8010/health
-```
-
-**UI extra pick one**
-
-**LobeChat (recommended if you want MCP + multi-model)**
-```
-docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lobechat-db
-```
-
-**AnythingLLM (recommended if you do heavy document RAG)**,
-```
-docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d anythingllm
-```
+| Layer | Command (PowerS           hell) | Details |
+|-------|---------|---------|
+| **Agents** |`docker compose -f docker-compose.yml -f compose/agents.yml up -d` |— |
+| **Automation** | `docker compose -f docker-compose.yml -f compose/automation.yml up -d` |— |
+| **Guardrails** | `docker compose -f docker-compose.yml -f compose/guardrails.yml up -d` | **First run builds NeMo Guardrails from source (~10 minutes). Verify it started:** `curl http://localhost:8010/health` |
+| **UI extras** | Pick **one**:<br><br>`docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d lobechat lobechat-db`<br><br>or<br><br>`docker compose -f docker-compose.yml -f compose/ui-extras.yml up -d anythingllm` | **LobeChat** — recommended if you want MCP + multi-model switching<br><br><br><br><br><br><br>**AnythingLLM** — recommended for heavy document RAG workspaces |
 
 ---
 
-## DeerFlow Setup 
-**(standalone — first time only)**
-DeerFlow has no pre-built public Docker image and runs as its own separate stack.
-1. Clone the repo (skip if already at D:\hotlanta_git\deer-flow)
-```
-cd D:\hotlanta_git
-git clone https://github.com/bytedance/deer-flow.git
-```
-
-2. Create config files from examples
-```
-cd deer-flow
-copy .env.example .env
-copy config.example.yaml config.yaml
-```
-
-3. Add the custom SearXNG wrapper (copy from this repo)
-mkdir backend\src\community\searxng
-> **Copy __init__.py and tools.py into that folder**
-
-4. Edit config.yaml — configure Ollama, AIO Sandbox, SearXNG tools
-> **Edit .env — set SEARXNG_URL and CORS_ORIGINS (see deerflow-config folder)**
-
-5. Set DEER_FLOW_ROOT — required by gateway and langgraph
-**To make it permanent (so you don't have to set it every time)**
-```
-[System.Environment]::SetEnvironmentVariable("DEER_FLOW_ROOT", "D:\hotlanta_git\deer-flow", "User")
-```
-
-6. Create extensions_config.json from the example
-```
-cd D:\hotlanta_git\deer-flow
-copy extensions_config.example.json extensions_config.json
-```
-7. Create frontend/.env if doesn't already exist
-8. Check if frontend has an example env file
-```
-dir frontend
-```
-If there's a frontend/.env.example, copy it:
-```
-copy frontend\.env.example frontend\.env
-```
-If there isn't one, create a minimal blank file:
-```
-New-Item frontend\.env -ItemType File
-```
-9. Create the logs/ directory (gateway and langgraph write logs there)
-```
-mkdir D:\hotlanta_git\deer-flow\logs
-```
-10.  Use the correct nginx config for your setup
-The compose file defaults to nginx.conf but the comment says local/AIO mode (which is yours — no Kubernetes) should use nginx.local.conf. Set this in your .env:
-
-**Open .env and add this exact line**
-```
-NGINX_CONF=nginx.local.conf
-```
-
-11.  Build and start (~10 minutes first time)
-```
-docker compose build
-docker compose up -d
-```
-
-#### Access DeerFlow at http://localhost:2026
-
-To stop: 
-```
-cd D:\hotlanta_git\deer-flow && docker compose down
-```
-To update: 
-```
-git pull  && docker compose build && docker compose up -d
-```
-
----
-> **Adding Skills to DeerFlow**
-Skills are Markdown-based capability modules that DeerFlow agents load on demand.
-They keep the context window lean — only the skill description loads at startup,
-full instructions load only when the task needs them.
-
-> **Clone any skill repo into deer-flow/skills/**
-```
-git clone https://github.com/author/skill-name.git skills/skill-name
-```
-
-> **Rebuild**
-```
-cd D:\hotlanta_git\deer-flow
-docker compose build && docker compose up -d
-```
-
-The visualise skill lets agents generate interactive SVG diagrams, HTML charts, flowcharts, and explainers inline — triggered by phrases like "show me a diagram of..." or "visualise the architecture of...".
-
-To update a skill after pulling changes:
-```
-cd D:\hotlanta_git\deer-flow\skills\visualise && git pull
-cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
-```
-
----
-
-## Vale-MCP Setup in AIO Sandbox 
+### 6. Vale-MCP Setup in AIO Sandbox 
 **(one-time)**
 * Vale-MCP source is mounted from D:\hotlanta_git\Vale-MCP\ (read-only).
 * Vale linter config and styles are mounted from `D:\hotlanta_git\vale_linter\` (read-only).
@@ -509,10 +376,9 @@ Vale persists in aio-workspace — no reinstall needed after container restarts.
 cp -r /home/gem/vale-mcp-src/. /home/gem/vale-mcp/ && cd /home/gem/vale-mcp && npm install && npm run build
 ```
 
-
 ---
 
-## TruLens Setup in AIO Sandbox 
+### 7. TruLens Setup in AIO Sandbox 
 **(one-time)**
 
 TruLens evaluates your RAG pipeline using the RAG Triad — three scores that
@@ -561,7 +427,9 @@ All scores are logged to Langfuse at **http://localhost:3020** for trend trackin
 
 ---
 
-## QWED Verification (Gateway + MCP Tool)
+<a id="qwed"></a>
+
+### 8. QWED Verification (Gateway + MCP Tool)
 
 QWED provides deterministic verification for structured outputs — math, SQL, code, and logic. Unlike neural guardrails, it uses symbolic solvers that mathematically prove correctness. If an output cannot be proven, QWED blocks it.
 
@@ -673,11 +541,115 @@ Add to DeerFlow or LobeChat MCP config: http://aio-sandbox:8091
 
 ---
 
-## NeMo Guardrails Configuration
+### 9. DeerFlow Setup 
+**(standalone — first time only)**
+DeerFlow has no pre-built public Docker image and runs as its own separate stack.
+1. Clone the repo (skip if already at D:\hotlanta_git\deer-flow)
+```
+cd D:\hotlanta_git
+git clone https://github.com/bytedance/deer-flow.git
+```
+
+2. Create config files from examples
+```
+cd deer-flow
+copy .env.example .env
+copy config.example.yaml config.yaml
+```
+
+3. Add the custom SearXNG wrapper (copy from this repo)
+mkdir backend\src\community\searxng
+> **Copy __init__.py and tools.py into that folder**
+
+4. Edit config.yaml — configure Ollama, AIO Sandbox, SearXNG tools
+> **Edit .env — set SEARXNG_URL and CORS_ORIGINS (see deerflow-config folder)**
+
+5. Set DEER_FLOW_ROOT — required by gateway and langgraph
+**To make it permanent (so you don't have to set it every time)**
+```
+[System.Environment]::SetEnvironmentVariable("DEER_FLOW_ROOT", "D:\hotlanta_git\deer-flow", "User")
+```
+
+6. Create extensions_config.json from the example
+```
+cd D:\hotlanta_git\deer-flow
+copy extensions_config.example.json extensions_config.json
+```
+7. Create frontend/.env if doesn't already exist
+8. Check if frontend has an example env file
+```
+dir frontend
+```
+If there's a frontend/.env.example, copy it:
+```
+copy frontend\.env.example frontend\.env
+```
+If there isn't one, create a minimal blank file:
+```
+New-Item frontend\.env -ItemType File
+```
+9. Create the logs/ directory (gateway and langgraph write logs there)
+```
+mkdir D:\hotlanta_git\deer-flow\logs
+```
+10.  Use the correct nginx config for your setup
+The compose file defaults to nginx.conf but the comment says local/AIO mode (which is yours — no Kubernetes) should use nginx.local.conf. Set this in your .env:
+
+**Open .env and add this exact line**
+```
+NGINX_CONF=nginx.local.conf
+```
+
+11.  Build and start (~10 minutes first time)
+```
+docker compose build
+docker compose up -d
+```
+
+#### Access DeerFlow at http://localhost:2026
+
+To stop: 
+```
+cd D:\hotlanta_git\deer-flow && docker compose down
+```
+To update: 
+```
+git pull  && docker compose build && docker compose up -d
+```
+
+---
+> **Adding Skills to DeerFlow**
+Skills are Markdown-based capability modules that DeerFlow agents load on demand.
+They keep the context window lean — only the skill description loads at startup,
+full instructions load only when the task needs them.
+
+> **Clone any skill repo into deer-flow/skills/**
+```
+git clone https://github.com/author/skill-name.git skills/skill-name
+```
+
+> **Rebuild**
+```
+cd D:\hotlanta_git\deer-flow
+docker compose build && docker compose up -d
+```
+
+The visualise skill lets agents generate interactive SVG diagrams, HTML charts, flowcharts, and explainers inline — triggered by phrases like "show me a diagram of..." or "visualise the architecture of...".
+
+To update a skill after pulling changes:
+```
+cd D:\hotlanta_git\deer-flow\skills\visualise && git pull
+cd D:\hotlanta_git\deer-flow && docker compose build && docker compose up -d
+```
+
+---
+
+<a id="nemo"></a>
+
+### 10. NeMo Guardrails Configuration
 
 Rails are defined in `D:\hotlanta_git\ai-stack\config\nemo-guardrails\rails.co`.
-Customize them for your domain — the defaults block off-topic queries,
-jailbreaks, and PII requests, and check all outputs for groundedness.
+Customize them for your domain — the defaults block off-topic queries, jailbreaks, and PII requests, and check all outputs for groundedness.
 
 After editing rails, restart the service:
 ```powershell
