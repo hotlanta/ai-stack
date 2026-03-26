@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vale-mcp": {
+      "type": "sse",
+      "url": "http://aio-sandbox:8080/mcp"
+    },
+    "qwed": {
+      "type": "sse",
+      "url": "http://aio-sandbox:8091/mcp"
+    }
+  }
+}

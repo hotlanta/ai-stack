@@ -214,6 +214,20 @@ services:
     networks:
       - ai-net
     environment:
-      OLLAMA_URL: "http://ollama:11434/api/generate"
+      OLLAMA_URL: "http://ollama:11434"
       DEFAULT_MODEL: "qwen3:4b-q4_K_M"
+    restart: unless-stopped
+  # ---------------------------------------------------------------------------
+  # mcpo
+  # ---------------------------------------------------------------------------
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: mcpo
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./config/mcpo/config.json:/app/config/config.json:ro
+    command: ["mcpo", "--host", "0.0.0.0", "--port", "8000", "--config", "/app/config/config.json"]
+    networks:
+      - ai-net
     restart: unless-stopped

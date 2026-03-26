@@ -492,6 +492,11 @@ Any model selected on this connection will have its responses automatically veri
 Keep the direct `http://ollama:11434` connection for chat/summarisation where
 verification adds no value.
 
+To distinguish gateway models from direct Ollama models in the Open WebUI 
+model dropdown, the gateway prefixes model names with `[QWED]` — e.g. 
+`[QWED] qwen3:4b-q4_K_M`. Select a `[QWED]` model when you want 
+deterministic verification; select the plain model name for general chat.
+
 #### Connect DeerFlow to the Gateway
 
 In `D:\hotlanta_git\deer-flow\config.yaml`, change `base_url` for coding or
@@ -538,6 +543,47 @@ cd /home/gem && nohup python mcp-qwed.py > mcp-qwed.log 2>&1 &
 ```
 
 Add to DeerFlow or LobeChat MCP config: http://aio-sandbox:8091
+
+---
+
+### Connecting MCP tools to Open WebUI via mcpo
+
+Open WebUI cannot speak the MCP protocol natively, but mcpo proxies MCP servers 
+as OpenAPI endpoints that Open WebUI can use as tools.
+
+Add mcpo to `compose/agents.yml`:
+```yaml
+mcpo:
+  image: ghcr.io/open-webui/mcpo:main
+  container_name: mcpo
+  ports:
+    - "8002:8000"
+  volumes:
+    - ./config/mcpo/config.json:/app/config/config.json:ro
+  command: ["mcpo", "--host", "0.0.0.0", "--port", "8000", "--config", "/app/config/config.json"]
+  networks:
+    - ai-net
+  restart: unless-stopped
+```
+
+Create `config/mcpo/config.json`:
+```json
+{
+  "mcpServers": {
+    "vale-mcp": {
+      "type": "sse",
+      "url": "http://aio-sandbox:8080/mcp"
+    },
+    "qwed": {
+      "type": "sse",
+      "url": "http://aio-sandbox:8091/mcp"
+    }
+  }
+}
+```
+
+Then in Open WebUI go to **Admin Panel → Settings → External Tools → +**
+and add `http://mcpo:8002/vale-mcp` and `http://mcpo:8002/qwed` separately.
 
 ---
 
@@ -602,15 +648,15 @@ NGINX_CONF=nginx.local.conf
 
 11.  Build and start (~10 minutes first time)
 ```
-docker compose build
-docker compose up -d
+docker compose -f docker/docker-compose-dev.yaml build
+docker compose -f docker/docker-compose-dev.yaml up -d
 ```
 
 #### Access DeerFlow at http://localhost:2026
 
 To stop: 
 ```
-cd D:\hotlanta_git\deer-flow && docker compose down
+cd D:\hotlanta_git\deer-flow && docker compose -f docker/docker-compose-dev.yaml down
 ```
 To update: 
 ```
@@ -1000,7 +1046,7 @@ This is usually a race condition during initial startup — a second `up` resolv
 ### Open WebUI
 
 Your everyday chat + RAG interface
-This is where you do most of your work. You talk to Ollama models, upload documents for RAG, and can connect to the QWED Gateway as an alternative model endpoint. Vale-MCP is not used here directly — Open WebUI doesn't have a tool-calling interface that connects to external MCP servers.
+This is where you do most of your work. You talk to Ollama models, upload documents for RAG, and can connect to the QWED Gateway as an alternative model endpoint. Vale-MCP and QWED can be connected to Open WebUI via mcpo — an OpenAPI proxy that bridges MCP servers to Open WebUI's tool interface. See the following [mcpo setup](#connecting-mcp-tools-to-open-webui-via-mcpo).
 
 **What you do here:**
 
@@ -1104,7 +1150,7 @@ DeerFlow recognises these phrases, loads the Visualise skill, and returns an int
 | View LLM traces + TruLens scores | Langfuse :3020
 | Run Vale/QWED/TruLens manually | AIO Sandbox terminal :8090
 | Manage containers + view logs | Portainer :9443
-| QWED Gateway | 
-| QWED MCP Tool | 
+| QWED Gateway (verified LLM calls) | Open WebUI or DeerFlow → http://qwed-gateway:8001 |
+| QWED MCP tool (verify mid-chat) | LobeChat or DeerFlow via MCP → http://aio-sandbox:8091 |
 
 The main thing to understand is that Open WebUI is for talking to your documents, DeerFlow is for researching and writing reports, and LobeChat is for multi-tool workflows where you want MCP server integrations like Vale and QWED available as tools the model can call mid-conversation.
