@@ -1,5 +1,7 @@
 # 🧠 Local AI Lab — CPU-Only Stack (2026)
 
+*NOTE:* This stack is a work-in-progress as I iron out the bugs.
+
 A modular, privacy-first AI stack that runs entirely on a CPU laptop and can be run offline.
 No GPU required. No cloud APIs. No data leaving your machine.
 
@@ -266,7 +268,7 @@ docker compose up -d ollama
 | **General chat** (8 GB laptops)   | `docker exec ollama ollama pull qwen3:1.7b-q4_K_M`        | `qwen3:1.7b-q4_K_M`           | ~2.3 GB   | ~3 GB    | Fast responses |
 | **Best general chat** (16 GB)     | `docker exec ollama ollama pull qwen3:4b-q4_K_M`          | `qwen3:4b-q4_K_M`             | ~4.7 GB   | ~5–6 GB  | Excellent balance of speed & quality |
 | **Best coding model**             | `docker exec ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M`    | `qwen2.5-coder:7b-instruct-q4_K_M`       | ~4.7 GB   | ~4.55–5 GB  | Optimized for code generation |
-| **Fast judge / guardrail**        | `docker exec ollama ollama pull phi4-mini:q4_K_M`         | `phi4-mini:q4_K_M`            | ~2.5 GB   | ~3 GB    | Very fast reasoning & evaluation |
+| **Fast judge / guardrail**        | `docker exec ollama ollama pull phi4-mini:3.8b-q4_K_M`         | `phi4-mini:3.8b-q4_K_M`            | ~2.5 GB   | ~3 GB    | Very fast reasoning & evaluation |
 | **Vision / multimodal** (optional)| `docker exec ollama ollama pull llava:7b`                 | `llava:7b`                    | ~4–6 GB   | ~5–7 GB  | Image understanding, diagrams, screenshots |
 
 > **Tip:** You can replace `qwen3:1.7b-q4_K_M` with `qwen3:4b-q4_K_M` if you have 16 GB+ RAM for noticeably better quality.
@@ -603,7 +605,12 @@ copy .env.example .env
 copy config.example.yaml config.yaml
 ```
 
-3. Add the custom SearXNG wrapper (copy from this repo)
+**Add HOME to deer-flow's .env file**
+```
+Add*-Content D:\hotlanta_git\deer-flow\.env "`nHOME=$env:USERPROFILE"
+```
+
+3. Add the custom SearXNG wrapper (copy from here: \hotlanta_git\ai-stack\scripts\)
 mkdir backend\src\community\searxng
 > **Copy __init__.py and tools.py into that folder**
 
@@ -638,15 +645,15 @@ New-Item frontend\.env -ItemType File
 ```
 mkdir D:\hotlanta_git\deer-flow\logs
 ```
-10.  Use the correct nginx config for your setup
+10.   Use the correct nginx config for your setup
 The compose file defaults to nginx.conf but the comment says local/AIO mode (which is yours — no Kubernetes) should use nginx.local.conf. Set this in your .env:
 
-**Open .env and add this exact line**
+11. **Open .env and add this exact line**
 ```
 NGINX_CONF=nginx.local.conf
 ```
 
-11.  Build and start (~10 minutes first time)
+12.  Build and start (~10 minutes first time)
 ```
 docker compose -f docker/docker-compose-dev.yaml build
 docker compose -f docker/docker-compose-dev.yaml up -d
